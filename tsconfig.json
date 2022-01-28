@@ -1,0 +1,25 @@
+{
+	"compilerOptions": {
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true,
+		"sourceMap": true,
+		"strict": true,
+		"strictNullChecks": true,
+		"noImplicitAny": true,
+		"noImplicitThis": true,
+		"strictBindCallApply": true,
+		"strictFunctionTypes": true,
+		"strictPropertyInitialization": true,
+		"lib": ["ES2020"],
+		"module": "commonjs",
+		"target": "ES2017",
+		"outDir": "dist",
+		"rootDir": "src",
+		"allowJs": false,
+		"alwaysStrict": true,
+		"baseUrl": "./src",
+		"paths": {
+			"*": ["../node_modules/*"],
+		}
+	}
+}
