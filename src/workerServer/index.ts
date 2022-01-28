@@ -132,7 +132,7 @@ class FaceRecognitionServer {
 		
 		/**Запрос списка директорий */
 		this.Server.get(`/getDirList`, async (req, res) => {
-			res.write(JSON.stringify(this.taskManager.photosManager.getAllDir()));
+			res.write(this.taskManager.photosManager.getAllDir().join(','));
 			res.statusCode = 200;
 			res.end();
 		});
