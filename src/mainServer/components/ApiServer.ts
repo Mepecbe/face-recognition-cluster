@@ -22,11 +22,13 @@ import { Request } from 'express';
 import { Logger, LogLevel } from '../../Logger';
 import 'dotenv/config';
 import { MainWorkerServer } from './mainWorkerServer';
+import { Distributor } from './filesDistribution/fileDistributor';
 
 /**API сервер для взаимодействия с подключаемыми внешними сервисами*/
 class ApiServer{
 	private readonly Server: ExpressFramework.Express;
 	private readonly mainWorkerServer: MainWorkerServer;
+	private readonly distributor: Distributor;
 
 	runServer(port: number): void {
 		Logger.enterLog(`[ApiServer] Запуск сервера на порту ${port}`, LogLevel.INFO);
@@ -34,8 +36,10 @@ class ApiServer{
 	}
 
 	constructor(
-		mainWorkerServer: MainWorkerServer
+		mainWorkerServer: MainWorkerServer,
+		distributor: Distributor
 	){
+		this.distributor = distributor;
 		this.mainWorkerServer = mainWorkerServer;
 		this.Server = ExpressFramework();
 		
@@ -46,7 +50,12 @@ class ApiServer{
 			res.statusCode = 200;
 			res.end();
 		});
-			
+		
+		this.Server.get(`/`, async (req, res) =>{
+			res.statusCode = 200;
+			res.end();
+		});
+
 
 		this.Server.post(`/`, async (req, res) => {
 			const jsonData: unknown | null = req.body;

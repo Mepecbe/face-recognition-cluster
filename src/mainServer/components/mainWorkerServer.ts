@@ -6,22 +6,23 @@ import { RgResult } from "rg";
 import { Utils } from "./utils";
 import request = require("request");
 import * as fs from "fs";
+import { WorkersManager } from "./workersManagement/workersManager";
+import * as uuid from "uuid";
 
 
 /**Главный сервер, служит для связи и общения с другими серверами, которые занимаются поиском лица */
 export class MainWorkerServer{
 	private readonly Server: ExpressFramework.Express;
-	private readonly Checker: NodeJS.Timer;
 
-	/**====================WORKERS API========================*/
-	//Подключённые сервера
-	private servers: WorkerServer[];
+	//Менеджер серверов
+	public workerManager: WorkersManager;
 
+	/**Определить сервер, который будет выполнять задачу и загрузить на него фотографию */
 	public async uploadImage(pathToFile: string): Promise<RgResult<{
 		server: WorkerServer,
 		imageId: string
 	}>>{
-		const server = Utils.parseTasksCount(this.servers);
+		const server = this.workerManager.parseTasksCount();
 
 		const result = await server.checkConnection();
 		if (result.is_success){
@@ -95,56 +96,19 @@ export class MainWorkerServer{
 		}
 	}
 
-	public async getDirs(server: WorkerServer): Promise<RgResult<string[]>>{
-		const result = await server.checkConnection();
-		if (result.is_success){
-			const result = await server.client.request({
-				path: `/getDirList`,
-				method: "GET"
-			}, null)
-
-			if (result.is_success){
-				return {
-					is_success: true,
-					data: result.data.split(',')
-				}
-			} else {
-				return result;
-			}
-		} else {
-			return {
-				is_success: false,
-				error: {
-					code: 1,
-					message: `Check connection error`
-				}
-			}
-		}
-	}
-	/**====================WORKERS API========================*/
-
-	/**Чекер серверов(проверяет пинг, загруженность задачами) */
-	async serversChecker(): Promise<void> {
-		for(const srv of this.servers){
-			await srv.checkConnection();
-			await srv.getTasksCount();
-		}
-	}
 
 	runServer(port: number): void {
-		Logger.enterLog(`[MainWorkerServer] Запуск сервера на порту ${port}`, LogLevel.INFO);
+		Logger.enterLog(`[MainWorkerServer] Запуск управляющего сервера на порту ${port}`, LogLevel.INFO);
 		this.Server.listen(port);
 	}
 
 	constructor(
 	){
-		this.servers = [];
-
 		this.Server = ExpressFramework();
 		this.Server.use(BodyParser.json());
 		//this.Server.use(BodyParser.urlencoded());
 
-		this.Checker = setInterval(this.serversChecker.bind(this), parseInt(process.env.SERVER_CHECKER_TIMEOUT || "60") * 1000);
+		this.workerManager = new WorkersManager();
 
 		//Connection checker
 		this.Server.get(`/`, async (req, res) =>{
@@ -170,31 +134,28 @@ export class MainWorkerServer{
 				return;
 			}
 
-			for (const srv of this.servers){
-				if (srv.url == DESTINATION_SERVER_URL && srv.port == parseInt(DESTINATION_SERVER_PORT)){
-					Logger.enterLog(`Server not added(ALREADY EXISTS), ${DESTINATION_SERVER_URL}:${DESTINATION_SERVER_PORT}, CPUs ${DESTINATION_SERVER_CPU_COUNT}, dirs ${DESTINATION_SERVER_DIRS_COUNT}`, LogLevel.WARN);
-					return;
-				}
+			if (this.workerManager.existsServer(
+				DESTINATION_SERVER_URL, 
+				parseInt(DESTINATION_SERVER_PORT),
+				parseInt(DESTINATION_SERVER_CPU_COUNT))
+			){
+				Logger.enterLog(`Server not added(ALREADY EXISTS), ${DESTINATION_SERVER_URL}:${DESTINATION_SERVER_PORT}, CPUs ${DESTINATION_SERVER_CPU_COUNT}, dirs ${DESTINATION_SERVER_DIRS_COUNT}`, LogLevel.WARN);
+				res.statusCode = 201;
+				res.end();
+				return;
 			}
 
-			this.servers.push(
-				new WorkerServer(
-					DESTINATION_SERVER_URL,
-					parseInt(DESTINATION_SERVER_PORT),
-					parseInt(DESTINATION_SERVER_CPU_COUNT),
-					parseInt(DESTINATION_SERVER_DIRS_COUNT)
-				)
+			const id = uuid.v4();
+			
+			this.workerManager.addServer(
+				id,
+				DESTINATION_SERVER_URL,
+				parseInt(DESTINATION_SERVER_PORT),
+				parseInt(DESTINATION_SERVER_CPU_COUNT),
+				parseInt(DESTINATION_SERVER_DIRS_COUNT)
 			);
 
 			Logger.enterLog(`Added new server, ${DESTINATION_SERVER_URL}:${DESTINATION_SERVER_PORT}, CPUs ${DESTINATION_SERVER_CPU_COUNT}, dirs ${DESTINATION_SERVER_DIRS_COUNT}`, LogLevel.INFO);
-
-			this.uploadImage("me.jpg").then(async (result) => {
-				if (result.is_success){
-					console.log(`Try create task`);
-					const taskCreateResult = await this.createTask(result.data.imageId, result.data.server, "qwerty");
-					console.log(`task result `, taskCreateResult);
-				}
-			})
 
 			res.statusCode = 200;
 			res.end();

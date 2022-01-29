@@ -189,6 +189,68 @@ class FaceRecognitionServer {
 			res.statusCode = 200;
 			res.end();
 		});
+
+
+		/**остальное */
+		
+		//Пополнение базы фотографий
+		this.Server.post(`/addFile`, async (req, res) => {
+			const filedata = req.file;
+
+			if (!filedata){
+				res.write("filedata is undefined");
+				res.statusCode = 400;
+				res.end();
+				return;
+			}
+
+			if (typeof(req.query["dir"]) !== "string"){
+				res.write("param dir is undefined");
+				res.statusCode = 400;
+				res.end();
+				return;
+			}
+			
+			const fullPath = process.env.PHOTOS_DIRECTORY + req.query["dir"] + "/";
+
+			Logger.enterLog(`[/addFile] Received file ${filedata.size} bytes`, LogLevel.WARN);
+
+			if (!fs.existsSync(fullPath)){
+				Logger.enterLog(`Create dir ${req.query["dir"]}`, LogLevel.INFO);
+				fs.mkdirSync(fullPath);
+			}
+
+			//Возвращаем оригинальный формат файла и перемещаем в нужную директорию
+			fs.rename(
+				`uploads/${filedata.filename}`,
+				fullPath + `${filedata.filename}.${filedata.originalname.split(".")[1]}`,
+				(err) => { console.error(err); }
+			);
+
+			res.statusCode = 200;
+			res.end();
+		});
+
+		this.Server.get(`/checkDir`, async (req, res) => {
+			if (typeof(req.query["dir"]) !== "string"){
+				res.write("param dir is undefined");
+				res.statusCode = 400;
+				res.end();
+				return;
+			}
+			
+			const fullPath = process.env.PHOTOS_DIRECTORY + req.query["dir"];
+
+			if (fs.existsSync(fullPath)){
+				let count = fs.readdirSync(fullPath).length;
+				res.write(count.toString());
+				res.statusCode = 200;
+				res.end();
+			} else {
+				res.statusCode = 404;
+				res.end();
+			}
+		});
 	}
 }
 
