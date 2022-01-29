@@ -9,21 +9,25 @@ async function main(): Promise<void> {
 		fs.mkdirSync(process.env.PHOTOS_DIRECTORY || "images");
 	}
 
-
 	const mainWorkerServer = new MainWorkerServer();
 
 	const distrib = new Distributor(
 		mainWorkerServer,
-		true,
-		true,
-		true
+		{
+			loadDb: true,
+			loadDirs: false,
+			checkDistribution: true
+		}
 	);
 
 	mainWorkerServer.runServer(parseInt(process.env.MAIN_WORKER_SERVER_PORT || "9010"));
 
+	const server = new ApiServer(
+		mainWorkerServer,
+		distrib
+	);
 	
-	//const server = new ApiServer(mainWorkerServer);
-	//server.runServer(8080);
+	server.runServer(parseInt(process.env.API_SERVER_PORT || "9301"));
 }
 
 main();

@@ -3,7 +3,7 @@ import { WorkerServer } from "../types";
 import * as fs from "fs";
 import { Logger, LogLevel } from "../../../Logger";
 import { FileInfoStorage, FileStorage } from "./filesInfoStorage";
-import { RgResult } from "rg";
+import { RgResult, timeout } from "rg";
 import * as progress from "cli-progress";
 import * as ansiColors from "ansi-colors";
 
@@ -14,12 +14,42 @@ export class Distributor{
 
 	//Идентификатор сервера - папки загруженные на него
 	private filesDb: Map<string, string[]> = new Map();
+
 	//Не распределенные по серверам папки
 	private notDistributedDirs: string[] = [];
 
-	/**Загрузить директории находящиеся на сервере и поместить список не распределенных */
+	/**Получить количество директорий */
+	async getDirsCount(): Promise<number> {
+		return new Promise((resolve, reject) => {
+			fs.readdir(process.env.PHOTOS_DIRECTORY || "images/", (err, result) => {
+				if (err){
+					reject(err);
+				} else {
+					resolve(result.length);
+				}
+			})
+		})
+	}
+
+	/**Получить количество не распределенных файлов */
+	getNotDistributedCount(): number {
+		return this.notDistributedDirs.length;
+	}
+
+	/**Получить сумарное количество распределенных файлов */
+	getDistributedCount(): number {
+		let count = 0;
+
+		for (const s of this.filesDb){
+			count += s[1].length
+		}
+
+		return count;
+	}
+
+	/**Загрузить список директорий находящихся на этом сервере и поместить список не распределенных */
 	async loadDirs(callback?: () => void): Promise<void> {
-		fs.readdir(process.env.PHOTOS_DIRECTORY || "images/", undefined, (err, result) => {
+		fs.readdir(process.env.PHOTOS_DIRECTORY || "images/", undefined, async (err, result) => {
 			if (err){
 				Logger.enterLog(`[loadDirs] Ошибка загрузки директорий ${err}`, LogLevel.ERROR);
 			}
@@ -27,7 +57,7 @@ export class Distributor{
 			let counter = 0;
 
 			const bar = new progress.SingleBar({
-				format: 'Проверка распределения папок |' + ansiColors.cyan('{bar}') + '| {percentage}% || {value}/{total} ',
+				format: 'Загрузка папок |' + ansiColors.cyan('{bar}') + '| {percentage}% || {value}/{total} ',
 				barCompleteChar: '\u2588',
 				barIncompleteChar: '\u2591',
 				hideCursor: true
@@ -43,11 +73,11 @@ export class Distributor{
 
 				counter++;
 				this.notDistributedDirs.push(r);
+				await timeout(1000);
 			}
 
 			bar.stop();
 
-			console.log(`[loadDirs] Загружено ${result.length} директорий, из них ${counter} не распределены, всего не распределенных ${this.notDistributedDirs.length}`);
 
 			if (callback){
 				callback();
@@ -79,30 +109,74 @@ export class Distributor{
 		}
 	}
 
-	/**Проверка распределения файлов
+	/**Проверка распределения файлов (сверка с данными из базы)
 	 * Проверяет каждую папку на наличие её на определенном сервере
 	 * Если папка существует на каком-либо сервере, то она удаляется из списка не распределенных папок
 	 */
-	checkDistibutedDirs(log: boolean): void {
+	checkDistibution(log: boolean): void {
+		if (this.filesDb.size == 0){
+			Logger.enterLog(`[checkDistibutedDirs] Проверка распределения не будет проведена, так как список серверов с информацией распределения пуст`, LogLevel.WARN);
+			return;
+		}
+
+		const bar = new progress.SingleBar({
+			format: 'Проверка распределения папок |' + ansiColors.cyan('{bar}') + '| {percentage}% || {value}/{total} ',
+			barCompleteChar: '\u2588',
+			barIncompleteChar: '\u2591',
+			hideCursor: true
+		});
+
+		bar.start(this.notDistributedDirs.length, 0);
+
 		for(let index = 0; index < this.notDistributedDirs.length; index++){
+			bar.increment();
+
 			const dir = this.notDistributedDirs.pop();
 
 			if (!dir){
 				continue;
 			}
 
-			const result = this.getDirLocation(dir);
+			const locationSearchResult = this.getDirLocation(dir);
 
-			if(!result.is_success){
+			if(!locationSearchResult.is_success){
 				this.notDistributedDirs.unshift(dir);
+			} else {
+				//сервер, на котором расположена директория найден, обратно в список добавлять не требуется
+			}
+		}
+	}
 
-				if (log){
-					Logger.enterLog(`[checkDistributedDirs] ${dir} -> NO DISTRIBUTED`, LogLevel.INFO);
+	/**Проверить целостность папок */
+	async checkNetworkIntegrity(): Promise<void> {
+		Logger.enterLog(`[checkNetworkIntegrity] Начинаю проверку целостности сети`, LogLevel.WARN);
+
+		for (const server of this.filesDb){
+			const serverInfo = this.server.workerManager.getServer(server[0]);
+
+			if (serverInfo.is_success){
+				const bar = new progress.SingleBar({
+					format: 'Проверка целостности |' + ansiColors.cyan('{bar}') + '| {percentage}% || {value}/{total} ',
+					barCompleteChar: '\u2588',
+					barIncompleteChar: '\u2591',
+					hideCursor: true
+				});
+
+				bar.start(server[1].length, 0);
+
+				const badDirs: string[] = [];
+
+				for (const dir of server[1]){
+					const result = await serverInfo.data.dirExists(dir);
+
+					if (!result.is_success){
+						badDirs.push(dir);
+					}
+
+					bar.increment();
 				}
 			} else {
-				if (log){
-					Logger.enterLog(`[checkDistributedDirs] ${dir} -> DISTRIBUTED ${result.data}`, LogLevel.INFO);
-				}
+				Logger.enterLog(`[checkNetworkIntegrity] Сервер ${server[0]} не найден`, LogLevel.WARN);
 			}
 		}
 	}
@@ -124,26 +198,35 @@ export class Distributor{
 		}));
 	}
 
+	/**
+	 * 
+	 * @param server Главный управляющий сервер
+	 * @param loadDb Загружать ли базу с информацией распределения на серверах
+	 * @param loadDirs Загружать ли список директорий в список не распределённых
+	 * @param checkDistribution Проверять распределение информации на серверах(не реальная проверка, сверка с данными из базы), крайне рекомендуется при каждой загрузке папок
+	 */
 	constructor(
 		server: MainWorkerServer,
-		loadDb: boolean,
-		loadDirs: boolean,
-		checkDistributed: boolean
+		settings: {
+			loadDb: boolean,
+			loadDirs: boolean,
+			checkDistribution: boolean
+		}
 	) {
 		this.server = server;
 		this.storage = new FileStorage(process.env.DISTRIBUTOR_DB_FILE || "distrib.db");
 
-		if (loadDb){
+		if (settings.loadDb){
 			this.loadDb();
 			Logger.enterLog(`[fileDistibutor] Загружена информация о директориях на серверах, записей ${this.filesDb.size}`, LogLevel.INFO)
 		}
 
-		if (loadDirs){
-			if (checkDistributed){
+		if (settings.loadDirs){
+			if (settings.checkDistribution){
 				Logger.enterLog(`[fileDistibutor] Начинаю загрузку директорий с последующей проверкой на основании сохранённых данных`, LogLevel.INFO); 
 				this.loadDirs(() => { 
-					Logger.enterLog(`[fileDistibutor] Загружено директорий ${this.notDistributedDirs.length}! Запускаю проверку распределения папок`, LogLevel.INFO); 
-					this.checkDistibutedDirs(true);
+					Logger.enterLog(`[fileDistibutor] Загружено директорий ${this.notDistributedDirs.length}! Запускаю проверку распределения папок(сверка с данными из базы)`, LogLevel.INFO); 
+					this.checkDistibution(true);
 				});
 			} else {
 				Logger.enterLog(`[fileDistibutor] Начинаю загрузку директорий без проверки распределения`, LogLevel.INFO); 

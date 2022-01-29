@@ -26,13 +26,13 @@ import { Distributor } from './filesDistribution/fileDistributor';
 
 /**API сервер для взаимодействия с подключаемыми внешними сервисами*/
 class ApiServer{
-	private readonly Server: ExpressFramework.Express;
+	private readonly server: ExpressFramework.Express;
 	private readonly mainWorkerServer: MainWorkerServer;
 	private readonly distributor: Distributor;
 
 	runServer(port: number): void {
 		Logger.enterLog(`[ApiServer] Запуск сервера на порту ${port}`, LogLevel.INFO);
-		this.Server.listen(port);
+		this.server.listen(port);
 	}
 
 	constructor(
@@ -41,23 +41,49 @@ class ApiServer{
 	){
 		this.distributor = distributor;
 		this.mainWorkerServer = mainWorkerServer;
-		this.Server = ExpressFramework();
+		this.server = ExpressFramework();
 		
-		this.Server.use(BodyParser.json());
+		this.server.use(BodyParser.json());
 		//this.Server.use(BodyParser.urlencoded());
 
-		this.Server.get(`/`, async (req, res) =>{
-			res.statusCode = 200;
-			res.end();
-		});
-		
-		this.Server.get(`/`, async (req, res) =>{
-			res.statusCode = 200;
-			res.end();
+		this.server.get(`/`, async (req, res) =>{
+			res.statusCode = 200; res.end();
 		});
 
+		this.server.get(`/distribution/dirsCount`, async (req, res) =>{
+			res.write((await this.distributor.getDirsCount()).toString());
+			res.statusCode = 200; res.end();
+		});
 
-		this.Server.post(`/`, async (req, res) => {
+		this.server.get(`/distribution/count`, async (req, res) =>{
+			const param = req.query["distributed"];
+
+			if (typeof(param) === "undefined"){
+				res.write("Param distributed:1or0 is undefined");
+				res.statusCode = 200; res.end();
+				return;
+			}
+
+			if (param == "1"){
+				res.write(this.distributor.getDistributedCount().toString());
+			} else {
+				res.write(this.distributor.getNotDistributedCount().toString());
+			}
+
+			res.statusCode = 200; res.end();
+		});
+
+		this.server.get(`/distribution/checkDistribution`, async (req, res) =>{
+			this.distributor.checkDistibution(true);
+			res.statusCode = 200; res.end();
+		});
+
+		this.server.get(`/distribution/checkNetworkIntegrity`, async (req, res) =>{
+			this.distributor.checkNetworkIntegrity();
+			res.statusCode = 200; res.end();
+		});
+
+		this.server.post(`/`, async (req, res) => {
 			const jsonData: unknown | null = req.body;
 			res.statusCode = 200;
 			res.end();

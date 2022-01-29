@@ -67,6 +67,25 @@ export class WorkersManager {
 		return this.servers.map(s => { return s.id == id; }).includes(true);
 	}
 
+	getServer(id: string): RgResult<WorkerServer> {
+		for (const s of this.servers){
+			if (s.id == id){
+				return {
+					is_success: true,
+					data: s
+				};
+			}
+		}
+
+		return {
+			is_success: false,
+			error: {
+				code: 1,
+				message: `Server not found`
+			}
+		}
+	}
+
 	/**Проверить, есть ли сервер с такимими ДАННЫМИ */
 	existsServer(url: string, port: number, cpuCount: number): boolean {
 		return this.servers.map(
