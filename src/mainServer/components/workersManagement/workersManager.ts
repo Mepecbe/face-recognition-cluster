@@ -4,6 +4,7 @@ import { Logger, LogLevel } from "../../../Logger";
 import { RgResult } from "rg";
 import { FileServersInfoStorage, IServersInfoStorage } from "./serverInfoStorage";
 
+/**Менеджер серверов */
 export class WorkersManager {
 	private servers: WorkerServer[];
 	/**Хранилище информации о серверах */
@@ -47,7 +48,12 @@ export class WorkersManager {
 			}
 		}
 	}
+	
+	public getServers(): WorkerServer[] {
+		return this.servers;
+	}
 
+	/**Сохранить информацию о серверах в файл */
 	saveToStorage(): void {
 		this.storage.saveAll(
 			this.servers.map((srv) => {
@@ -151,9 +157,31 @@ export class WorkersManager {
 		}
 	}
 
-	constructor(){
+	constructor(
+		dependencies: {
+			storage: IServersInfoStorage
+		},
+		options: {
+			loadServersList: boolean;
+		}
+	){
 		this.servers = [];
-		this.storage = new FileServersInfoStorage(process.env.SERVERS_INFO_FILE || "server.db");
+		this.storage = dependencies.storage;
+		
+		if (options.loadServersList){
+			this.servers = this.storage.loadAll().map((info) => {
+				return new WorkerServer(
+					info.id,
+					info.url,
+					info.port,
+					info.cpu_count,
+					info.dirs
+				)
+			});
+
+			Logger.enterLog(`[WorkersManager] Loaded ${this.servers.length} servers`, LogLevel.INFO);
+		}
+
 		this.Checker = setInterval(
 			this.serversChecker.bind(this), 
 			parseInt(process.env.SERVER_CHECKER_TIMEOUT || "60") * 1000

@@ -21,7 +21,15 @@ export class FileServersInfoStorage implements IServersInfoStorage {
 	public readonly dbFile: string;
 
 	loadAll(): storageRecord[] {
-		const data = JSON.parse(fs.readFileSync(this.dbFile).toString());
+		let data: any;
+
+		try{
+			data = JSON.parse(fs.readFileSync(this.dbFile).toString());
+		} catch {
+			Logger.enterLog(`[FileServersInfoStorage] JSON parse error, return empty array`, LogLevel.WARN);
+			return [];
+		}
+
 		const records: storageRecord[] = [];
 
 		if (Array.isArray(data)){
@@ -42,12 +50,14 @@ export class FileServersInfoStorage implements IServersInfoStorage {
 					continue;
 				}
 				
-				if (typeof(element.dirs) !== "number"){
+				if (typeof(element.dirsCount) !== "number"){
 					continue;
 				}
 
 				records.push(element);
 			}
+		} else {
+			console.error(`not array`);
 		}
 
 		return records;
@@ -74,8 +84,8 @@ export class FileServersInfoStorage implements IServersInfoStorage {
 		this.dbFile = dbFile;
 		
 		if (!fs.existsSync(this.dbFile)){
-			Logger.enterLog(`[WorkersManager] Create file ${this.dbFile}`, LogLevel.WARN);
-			fs.appendFileSync(this.dbFile, "");
+			Logger.enterLog(`[FileServersInfoStorage] Create file ${this.dbFile}`, LogLevel.WARN);
+			fs.appendFileSync(this.dbFile, "[]");
 		}
 	}
 }

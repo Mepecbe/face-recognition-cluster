@@ -50,7 +50,7 @@ export class PhotosManager {
 					this.photosDirectories.set(index, dirs[index]);
 				}
 			}
-		});
+		}, 5000);
 
 		Logger.enterLog(`[PhotosManager] Loaded ${dirs.length} directories`, LogLevel.INFO);
 	}

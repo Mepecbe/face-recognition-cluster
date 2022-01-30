@@ -26,15 +26,25 @@ class FaceRecognitionServer {
 	private readonly ROOT_SERVER: string;
 	private readonly ROOT_SERVER_PORT: number;
 
+	private prober: NodeJS.Timer | undefined = undefined;
+
 	public async run(port: number): Promise<void> {
 		{
 			//Проверка доступности корневого сервера
 			try{
 				const result = await ping(this.ROOT_SERVER, this.ROOT_SERVER_PORT);
 				Logger.enterLog(`[FaceRecognitionServer.run] Server ping ${result}`, LogLevel.INFO);
+
+				if (this.prober !== undefined){
+					clearInterval(this.prober);
+				}
 			} catch(Ex: any) {
 				Logger.enterLog(`[FaceRecognitionServer.run] Check root server error(${this.ROOT_SERVER}:${this.ROOT_SERVER_PORT}), exit ` + Ex, LogLevel.ERROR);
-				process.exit(-1);
+
+				if (this.prober == undefined){
+					this.prober = setInterval(() => { this.run(port); }, 3000);
+				}
+				return;
 			}
 		}
 
@@ -49,6 +59,8 @@ class FaceRecognitionServer {
 				(err, response, body) => {
 					if (response.statusCode == 200){
 						Logger.enterLog("Connected to ROOT SERVER, registration success", LogLevel.INFO);
+					} else if (response.statusCode == 201){
+						Logger.enterLog("Connected to ROOT SERVER (previously connected)", LogLevel.INFO);
 					} else if (response.statusCode == 400){
 						Logger.enterLog("Connected to ROOT SERVER FAILED", LogLevel.ERROR);
 					}
@@ -149,7 +161,7 @@ class FaceRecognitionServer {
 				return;
 			}
 			
-			Logger.enterLog(`Received file ${filedata.size} bytes`, LogLevel.WARN);
+			Logger.enterLog(`[/fileUpload] Received file ${filedata.size} bytes`, LogLevel.WARN);
 
 			//Возвращаем оригинальный формат файла
 			fs.rename(
@@ -198,6 +210,7 @@ class FaceRecognitionServer {
 			const filedata = req.file;
 
 			if (!filedata){
+				console.log(`filedata is undefined`);
 				res.write("filedata is undefined");
 				res.statusCode = 400;
 				res.end();
@@ -205,6 +218,7 @@ class FaceRecognitionServer {
 			}
 
 			if (typeof(req.query["dir"]) !== "string"){
+				console.log(`param dir is undefined`);
 				res.write("param dir is undefined");
 				res.statusCode = 400;
 				res.end();
@@ -216,16 +230,39 @@ class FaceRecognitionServer {
 			Logger.enterLog(`[/addFile] Received file ${filedata.size} bytes`, LogLevel.WARN);
 
 			if (!fs.existsSync(fullPath)){
-				Logger.enterLog(`Create dir ${req.query["dir"]}`, LogLevel.INFO);
 				fs.mkdirSync(fullPath);
 			}
 
 			//Возвращаем оригинальный формат файла и перемещаем в нужную директорию
+			
+			Logger.enterLog(`[/addFile] Move from >${`uploads/${filedata.filename}`}< to >${fullPath + `${filedata.filename}.${filedata.originalname.split(".")[1]}`}<`, LogLevel.WARN);
+			
 			fs.rename(
 				`uploads/${filedata.filename}`,
 				fullPath + `${filedata.filename}.${filedata.originalname.split(".")[1]}`,
 				(err) => { console.error(err); }
 			);
+
+			res.statusCode = 200;
+			res.end();
+		});
+
+		//Просто создание папки под фотографии
+		this.Server.get(`/addDir`, async (req, res) => {
+			if (typeof(req.query["dir"]) !== "string"){
+				console.log(`param dir is undefined`);
+				res.write("param dir is undefined");
+				res.statusCode = 400;
+				res.end();
+				return;
+			}
+
+			const fullPath = process.env.PHOTOS_DIRECTORY + req.query["dir"] + "/";
+
+			if (!fs.existsSync(fullPath)){
+				console.log(`create dir ${fullPath}`);
+				fs.mkdirSync(fullPath);
+			}
 
 			res.statusCode = 200;
 			res.end();
@@ -261,3 +298,6 @@ class FaceRecognitionServer {
 const taskManager = new WorkerTaskManager(parseInt(process.env.WORKERS_PORT ? process.env.WORKERS_PORT : "9009"));
 const server = new FaceRecognitionServer(taskManager);
 server.run(parseInt(process.env.WORKERS_PORT ? process.env.WORKERS_PORT : "9009"));
+
+//############!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+console.error = () => {};

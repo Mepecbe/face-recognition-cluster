@@ -17,7 +17,7 @@ export class MainWorkerServer{
 	//Менеджер серверов
 	public workerManager: WorkersManager;
 
-	/**Определить сервер, который будет выполнять задачу и загрузить на него фотографию */
+	/**Определить сервер, который будет выполнять задачу ПО ПОИСКУ ЛИЦА и загрузить на него фотографию */
 	public async uploadImage(pathToFile: string): Promise<RgResult<{
 		server: WorkerServer,
 		imageId: string
@@ -103,12 +103,13 @@ export class MainWorkerServer{
 	}
 
 	constructor(
+		workersManager: WorkersManager
 	){
 		this.Server = ExpressFramework();
 		this.Server.use(BodyParser.json());
 		//this.Server.use(BodyParser.urlencoded());
 
-		this.workerManager = new WorkersManager();
+		this.workerManager = workersManager;
 
 		//Connection checker
 		this.Server.get(`/`, async (req, res) =>{
@@ -154,6 +155,8 @@ export class MainWorkerServer{
 				parseInt(DESTINATION_SERVER_CPU_COUNT),
 				parseInt(DESTINATION_SERVER_DIRS_COUNT)
 			);
+
+			this.workerManager.saveToStorage();
 
 			Logger.enterLog(`Added new server, ${DESTINATION_SERVER_URL}:${DESTINATION_SERVER_PORT}, CPUs ${DESTINATION_SERVER_CPU_COUNT}, dirs ${DESTINATION_SERVER_DIRS_COUNT}`, LogLevel.INFO);
 

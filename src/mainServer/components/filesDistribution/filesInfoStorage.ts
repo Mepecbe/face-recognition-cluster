@@ -55,7 +55,7 @@ export class FileStorage implements FileInfoStorage {
 
 		if (!fs.existsSync(this.dbFile)){
 			Logger.enterLog(`[FileStorage] Create ${this.dbFile}`, LogLevel.WARN);
-			fs.writeFileSync(this.dbFile, "");
+			fs.writeFileSync(this.dbFile, "[]");
 		}
 	}
 }

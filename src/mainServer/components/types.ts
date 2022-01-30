@@ -2,7 +2,8 @@ import { RgResult } from "rg";
 import * as ping from "node-http-ping";
 import { Logger, LogLevel } from "../../Logger";
 import * as request from "request";
-import { RgWeb} from "rg-web";
+import { RgWeb } from "rg-web";
+import * as fs from "fs";
 
 export class WorkerServer {
 	public readonly id: string;
@@ -32,6 +33,77 @@ export class WorkerServer {
 				error: {
 					code: parseInt(Ex),
 					message: `Check connection error, code ${Ex}`
+				}
+			}
+		}
+	}
+
+	/**Загрузить фотографию на сервер(пополнение базы фотографий) */
+	public async uploadImage(
+		pathToFile: string,
+		dirname: string
+	): Promise<RgResult<null>>{
+		const result = await this.checkConnection();
+
+		if (result.is_success){
+			await new Promise<string>((resolve, reject) => {
+				request.post(
+					`http://${this.url}:${this.port}/addFile?dir=${dirname}`,
+					{
+						formData: {
+							filedata: fs.createReadStream(pathToFile)
+						}
+					},
+					(err, response, body) => {
+						if (err){
+							reject(err);
+						} else if (response){
+							resolve(response.body);
+						}
+					}
+				)}
+			);
+
+			return {
+				is_success: true,
+				data: null
+			};
+		} else {
+			return {
+				is_success: false,
+				error: {
+					code: 1,
+					message: `Check connection error`
+				}
+			}
+		}
+	}
+
+	/**Создать папку на сервере */
+	public async createDir(
+		dirname: string
+	): Promise<RgResult<null>>{
+		const result = await this.checkConnection();
+
+		if (result.is_success){
+			const result = await this.client.request({
+				path: `/addDir?dir=${dirname}`
+			}, null)
+
+			if (result.is_success){
+				return {
+					is_success: true,
+					data: null
+				}
+			} else {
+				return result;
+			}
+		} else {
+			return {
+				is_success: false,
+				error: {
+					code: 1,
+					message: `Check connection error`
 				}
 			}
 		}

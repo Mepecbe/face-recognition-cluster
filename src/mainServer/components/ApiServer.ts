@@ -74,7 +74,7 @@ class ApiServer{
 		});
 
 		this.server.get(`/distribution/checkDistribution`, async (req, res) =>{
-			this.distributor.checkDistibution(true);
+			this.distributor.checkDistribution(true);
 			res.statusCode = 200; res.end();
 		});
 
@@ -82,6 +82,40 @@ class ApiServer{
 			this.distributor.checkNetworkIntegrity();
 			res.statusCode = 200; res.end();
 		});
+
+		this.server.get(`/distribution/startAutoDistrib`, async (req, res) =>{
+			/**
+			 * Загрузка директорий будет произведена, если директории не загружены
+			 * Проверка распределения будет произведена, если директории не были загружены
+			 * 			 * 
+			 */
+			this.distributor.runAutoDistrib({
+				loadDirs: (await this.distributor.getDirsCount() == 0),
+				checkDistibution: (await this.distributor.getDirsCount() == 0)
+			});
+
+			res.statusCode = 200; res.end();
+		});
+
+		this.server.get('/getLag', async (req, res) => {
+			const start = new Date()
+			setTimeout(() => {
+				const lag = ((new Date().getMilliseconds()) - start.getMilliseconds());
+				
+				res.write(lag.toString());
+				res.statusCode = 200; res.end();
+			})
+		})
+
+		this.server.get('/distribution/updateServerList', async (req, res) => {
+			res.write(this.distributor.updateServersList().toString());
+			res.statusCode = 200; res.end();
+		})
+
+		this.server.get('/distribution/loadDirs', async (req, res) => {
+			this.distributor.loadDirs(undefined, true);
+			res.statusCode = 200; res.end();
+		})
 
 		this.server.post(`/`, async (req, res) => {
 			const jsonData: unknown | null = req.body;
