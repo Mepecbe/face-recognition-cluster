@@ -275,8 +275,6 @@ export class Distributor{
 								const photos = fs.readdirSync(this.PHOTOS_DIRECTORY + dir);
 
 								if (photos.length > 0){
-									await serverInfo.data.createDir(dir);
-
 									for (const photo of photos){
 										await serverInfo.data.uploadImage(this.PHOTOS_DIRECTORY + dir + "/" + photo, dir);
 									}
