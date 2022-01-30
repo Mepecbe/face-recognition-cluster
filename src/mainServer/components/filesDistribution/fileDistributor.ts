@@ -184,8 +184,24 @@ export class Distributor{
 		Logger.enterLog(`Проверка распределения завершена, не распределено ${this.notDistributedDirs.length} папок`, LogLevel.INFO)
 	}
 
-	/**Проверить целостность папок */
-	async checkNetworkIntegrity(fixServerErrors = false): Promise<void> {
+	getServersList(): string[] {
+		const result: string[] = [];
+
+		for (const srv of this.filesDb){
+			result.push(srv[0]);
+		}
+
+		return result;
+	}
+
+	/**Проверить целостность сети
+	 * @argument fixServerErrors исправлять ли ошибки целостности
+	 * @argument fullCheck проверять ли файлы (если false - будет проверено только наличие папок)
+	 */
+	async checkNetworkIntegrity(fixServerErrors = false, fullCheck = false): Promise<void> {
+
+		if (fullCheck) the
+		
 		if (this.filesDb.size == 0){
 			Logger.enterLog(`[checkNetworkIntegrity] Проверка целостности сети прервана(серверов нет)`, LogLevel.WARN);
 			return;

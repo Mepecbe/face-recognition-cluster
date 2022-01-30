@@ -50,8 +50,31 @@ class ApiServer{
 			res.statusCode = 200; res.end();
 		});
 
+		this.server.get('/serversList', async (req, res) => {
+			const servers = this.mainWorkerServer.workerManager.getServers();
+			const data: any[] = [];
+
+			for (const server of servers){
+				data.push({
+					id: server.id,
+					url: server.url,
+					cpu_count: server.cpu_count,
+					dirsCount: server.dirsCount
+				});
+			}
+
+			res.write(JSON.stringify(data));
+			res.statusCode = 200; res.end();
+		});
+
+
 		this.server.get(`/distribution/dirsCount`, async (req, res) =>{
 			res.write((await this.distributor.getDirsCount()).toString());
+			res.statusCode = 200; res.end();
+		});
+
+		this.server.get('/distribution/getServersList', async (req, res) => {
+			res.write(this.distributor.getServersList().join(","));
 			res.statusCode = 200; res.end();
 		});
 
@@ -80,13 +103,22 @@ class ApiServer{
 
 		this.server.get(`/distribution/checkNetworkIntegrity`, async (req, res) =>{
 			let fix = false;
+			let fullCheck = false;
 
 			if (req.query["fixErrors"] == "1"){
 				fix = true;
 			}
 
-			this.distributor.checkNetworkIntegrity(fix);
+			if (req.query["fullCheck"] == "1"){
+				fullCheck = true;
+			}
+
+			this.distributor.checkNetworkIntegrity(fix, fullCheck);
 			res.statusCode = 200; res.end();
+		});
+
+		this.server.get('/distribution/checkFullNetworkIntegrity', async (req, res) => {
+
 		});
 
 		this.server.get(`/distribution/startAutoDistrib`, async (req, res) =>{
