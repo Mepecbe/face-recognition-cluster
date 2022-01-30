@@ -160,6 +160,7 @@ export class WorkerServer {
 
 	public async dirExists(dir: string): Promise<RgResult<number>> {
 		const result = await this.checkConnection();
+
 		if (result.is_success){
 			const result = await this.client.request({
 				path: `/checkDir?dir=${dir}`,
@@ -167,9 +168,19 @@ export class WorkerServer {
 			}, null)
 
 			if (result.is_success){
-				return {
-					is_success: true,
-					data: parseInt(result.data)
+				if (result.http_status_code == 200){
+					return {
+						is_success: true,
+						data: parseInt(result.data)
+					}
+				} else {
+					return {
+						is_success: false,
+						error: {
+							code: result.http_status_code,
+							message: `404 not found`
+						}
+					}
 				}
 			} else {
 				return result;

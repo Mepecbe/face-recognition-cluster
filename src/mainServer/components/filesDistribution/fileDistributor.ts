@@ -142,29 +142,31 @@ export class Distributor{
 	 * Проверяет каждую папку на наличие её на определенном сервере
 	 * Если папка существует на каком-либо сервере, то она удаляется из списка не распределенных папок
 	 */
-	checkDistribution(log: boolean): void {
+	checkDistribution(): void {
 		if (this.filesDb.size == 0){
 			Logger.enterLog(`[checkDistibutedDirs] Проверка распределения не будет проведена, так как список серверов с информацией распределения пуст`, LogLevel.WARN);
 			return;
 		}
 
 		Logger.blockMessages(true);
-		const bar = new progress.SingleBar({
+		let bar: progress.SingleBar | undefined = undefined;
+
+		bar = new progress.SingleBar({
 			format: 'Проверка распределения папок |' + ansiColors.cyan('{bar}') + '| {percentage}% || {value}/{total} ',
 			barCompleteChar: '\u2588',
 			barIncompleteChar: '\u2591',
 			hideCursor: true
 		});
+		
 
 		bar.start(this.notDistributedDirs.length, 0);
 
-		for(let index = 0; index < this.notDistributedDirs.length; index++){
-			bar.increment();
+		for(let index = 0; index < bar.getTotal(); index++){
+			bar?.increment();
 
 			const dir = this.notDistributedDirs.pop();
 
 			if (!dir){
-				Logger.enterLog(`WARN! Unknown error ${dir}`, LogLevel.ERROR);
 				continue;
 			}
 
@@ -177,7 +179,7 @@ export class Distributor{
 			}
 		}
 		
-		bar.stop();
+		bar?.stop();
 		Logger.blockMessages(false);
 		Logger.enterLog(`Проверка распределения завершена, не распределено ${this.notDistributedDirs.length} папок`, LogLevel.INFO)
 	}
@@ -191,12 +193,21 @@ export class Distributor{
 			Logger.enterLog(`[checkNetworkIntegrity] Начинаю проверку целостности сети`, LogLevel.WARN);
 		}
 
+		let barServerDirs: Map<string, string[]> = new Map();
+
 		for (const server of this.filesDb){
 			const serverInfo = this.server.workerManager.getServer(server[0]);
 
 			if (serverInfo.is_success){
+				const checkConnectionResult = await serverInfo.data.checkConnection();
+
+				if (!checkConnectionResult.is_success){
+					Logger.enterLog(`Целостность сервера ${serverInfo.data.url}:${serverInfo.data.port} не будет проверена(ошибка связи)`, LogLevel.WARN);
+					continue;
+				}
+
 				const bar = new progress.SingleBar({
-					format: 'Проверка целостности |' + ansiColors.cyan('{bar}') + '| {percentage}% || {value}/{total} ',
+					format: `Проверка целостности сервера ${serverInfo.data.url}:${serverInfo.data.port}|` + ansiColors.cyan('{bar}') + '| {percentage}% || {value}/{total} ',
 					barCompleteChar: '\u2588',
 					barIncompleteChar: '\u2591',
 					hideCursor: true
@@ -215,8 +226,22 @@ export class Distributor{
 
 					bar.increment();
 				}
+
+				bar.stop();
+
+				if (badDirs.length != 0){
+					barServerDirs.set(serverInfo.data.id, badDirs);
+				}
 			} else {
 				Logger.enterLog(`[checkNetworkIntegrity] Сервер ${server[0]} не найден`, LogLevel.WARN);
+			}
+		}
+
+		if (barServerDirs.size != 0){
+			Logger.enterLog(`Проверка выявила ошибки целостности! `, LogLevel.WARN);
+
+			for (const info of barServerDirs){
+				Logger.enterLog(`  На сервере ${info[0]} найдено ${info[1].length} ошибок целостности`, LogLevel.INFO);
 			}
 		}
 	}
@@ -233,7 +258,7 @@ export class Distributor{
 		}
 
 		if (params.checkDistibution){
-			this.checkDistribution(true);
+			this.checkDistribution();
 		}
 
 		if (this.notDistributedDirs.length == 0){
@@ -245,10 +270,21 @@ export class Distributor{
 
 		Logger.enterLog(`[autoDistrib] Старт распределения, всего папок для распределения ${this.notDistributedDirs.length}, количество доступных серверов ${this.filesDb.size}, на один сервер приходится ${countDirsPerServer} файлов`, LogLevel.WARN);
 
+		let totalUploadedDirs = 0;
+
 		for (const serverFiles of this.filesDb){
 			const serverInfo = this.server.workerManager.getServer(serverFiles[0]);
 
 			if (serverInfo.is_success){
+				const checkConnection = await serverInfo.data.checkConnection();
+
+				if (!checkConnection.is_success){
+					Logger.enterLog(`[autoDistrib] Сервер ${serverInfo.data.url}:${serverInfo.data.port} не доступен для распределения(ошибка проверки связи)`, LogLevel.WARN);
+					continue;
+				} else {
+					//Проверка связи успешна
+				}
+
 				const bar = new progress.SingleBar({
 					format: `Распределение файлов на сервер ${serverInfo.data.url}:${serverInfo.data.port} | ${ansiColors.cyan('{bar}')}| {percentage}% || {value}/{total} {dir}`,
 					barCompleteChar: '\u2588',
@@ -300,6 +336,7 @@ export class Distributor{
 							continue;
 						} else {
 							serverFiles[1].push(dir);
+							totalUploadedDirs++;
 						}
 					} else {
 						const createDirResult = await serverInfo.data.createDir(dir);
@@ -309,6 +346,7 @@ export class Distributor{
 							continue;
 						} else {
 							serverFiles[1].push(dir);
+							totalUploadedDirs++;
 						}
 					}
 
@@ -322,21 +360,17 @@ export class Distributor{
 				bar.stop();
 				Logger.blockMessages(false);
 
-				Logger.enterLog(`На сервер ${serverInfo.data.url}:${serverInfo.data.port} отправлено ${filesUploaded} файлов, не отправлено ${filesUploadError}`, LogLevel.INFO);
+				Logger.enterLog(`На сервер ${serverInfo.data.url}:${serverInfo.data.port} отправлено ${filesUploaded} файлов ${filesUploadError != 0 ? `, не отправлено ${filesUploadError} файлов` : ""} ${ dirsUploadErrors.length != 0 ? `, не отправлено ${dirsUploadErrors.length} папок ` : ``}`, LogLevel.INFO);
 				
 				if (dirsUploadErrors.length != 0){
-					if (dirsUploadErrors.length < 10){
-						Logger.enterLog(`Не удалось выгрузить ${dirsUploadErrors.join(',')} папок`, LogLevel.WARN);
-					} else {
-						Logger.enterLog(`Список не выгруженных папок слишком велик!`, LogLevel.WARN);
-					}
+					Logger.enterLog(`Не удалось выгрузить ${dirsUploadErrors.length} папок`, LogLevel.WARN);
 				}
 			} else {
 				Logger.enterLog(`[autoDistrib] Информация о сервере не найдена, srv id ${serverFiles[0]}`, LogLevel.WARN);
 			}
 		}
 
-		Logger.enterLog(`[autoDistrib] Новые данные о распределении сохранены`, LogLevel.WARN);
+		Logger.enterLog(`[autoDistrib] Новые данные о распределении сохранены, выгружено ${totalUploadedDirs} папок`, LogLevel.WARN);
 		this.saveDb();
 	}
 
@@ -393,7 +427,7 @@ export class Distributor{
 				Logger.enterLog(`[fileDistibutor] Начинаю загрузку директорий с последующей проверкой на основании сохранённых данных`, LogLevel.INFO); 
 				this.loadDirs(() => { 
 					Logger.enterLog(`[fileDistibutor] Загружено директорий ${this.notDistributedDirs.length}! Запускаю проверку распределения папок(сверка с данными из базы)`, LogLevel.INFO); 
-					this.checkDistribution(true);
+					this.checkDistribution();
 				});
 			} else {
 				Logger.enterLog(`[fileDistibutor] Начинаю загрузку директорий без проверки распределения`, LogLevel.INFO); 

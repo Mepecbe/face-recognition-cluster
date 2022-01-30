@@ -268,6 +268,7 @@ class FaceRecognitionServer {
 			res.end();
 		});
 
+	
 		this.Server.get(`/checkDir`, async (req, res) => {
 			if (typeof(req.query["dir"]) !== "string"){
 				res.write("param dir is undefined");
@@ -278,7 +279,8 @@ class FaceRecognitionServer {
 			
 			const fullPath = process.env.PHOTOS_DIRECTORY + req.query["dir"];
 
-			if (fs.existsSync(fullPath)){
+			if (this.taskManager.photosManager.checkExistsDir(req.query["dir"])){
+				//Если директория существует, то отвечаем сколько файлов в ней находится
 				let count = fs.readdirSync(fullPath).length;
 				res.write(count.toString());
 				res.statusCode = 200;

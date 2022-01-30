@@ -74,7 +74,7 @@ class ApiServer{
 		});
 
 		this.server.get(`/distribution/checkDistribution`, async (req, res) =>{
-			this.distributor.checkDistribution(true);
+			this.distributor.checkDistribution();
 			res.statusCode = 200; res.end();
 		});
 

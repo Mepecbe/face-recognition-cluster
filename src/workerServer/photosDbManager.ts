@@ -15,9 +15,12 @@ export class PhotosManager {
 		return Array.from(this.photosDirectories.values());
 	}
 	
+	/**Проверить, есть ли в списке такая папка с фотографиями */
 	checkExistsDir(dir: string): boolean {
-		if (fs.existsSync(this.PHOTOS_DIR + dir)){
-			return true;
+		for (const d of this.photosDirectories){
+			if (d[1] == dir){
+				return true;
+			}
 		}
 
 		return false;
@@ -45,6 +48,8 @@ export class PhotosManager {
 
 			if (dirs.length != this.photosDirectories.size){
 				Logger.enterLog(`Updated directories list, old count ${this.photosDirectories.size}, new ${dirs.length}`, LogLevel.INFO);
+
+				this.photosDirectories.clear();
 
 				for (let index = 0; index < dirs.length; index++){
 					this.photosDirectories.set(index, dirs[index]);
