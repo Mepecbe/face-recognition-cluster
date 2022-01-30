@@ -185,7 +185,7 @@ export class Distributor{
 	}
 
 	/**Проверить целостность папок */
-	async checkNetworkIntegrity(): Promise<void> {
+	async checkNetworkIntegrity(fixServerErrors = false): Promise<void> {
 		if (this.filesDb.size == 0){
 			Logger.enterLog(`[checkNetworkIntegrity] Проверка целостности сети прервана(серверов нет)`, LogLevel.WARN);
 			return;
@@ -221,7 +221,11 @@ export class Distributor{
 					const result = await serverInfo.data.dirExists(dir);
 
 					if (!result.is_success){
-						badDirs.push(dir);
+						if (result.error.code == 404){
+							badDirs.push(dir);
+						} else {
+							//Connection error
+						}
 					}
 
 					bar.increment();
@@ -241,8 +245,54 @@ export class Distributor{
 			Logger.enterLog(`Проверка выявила ошибки целостности! `, LogLevel.WARN);
 
 			for (const info of barServerDirs){
-				Logger.enterLog(`  На сервере ${info[0]} найдено ${info[1].length} ошибок целостности`, LogLevel.INFO);
+				Logger.enterLog(`  На сервере ${info[0]} найдено ${info[1].length} ошибок целостности${fixServerErrors ? `, начинаю исправление` : `, авто-исправление отключено`}`, LogLevel.INFO);
 			}
+
+			if (fixServerErrors){
+				for (const info of barServerDirs){
+					const serverInfo = this.server.workerManager.getServer(info[0]);
+
+					if (serverInfo.is_success){
+						const checkConnectResult = await serverInfo.data.checkConnection();
+
+						if (checkConnectResult.is_success){
+							Logger.blockMessages(true);
+
+							const bar = new progress.SingleBar({
+								format: `Исправление ошибок сервера ${serverInfo.data.url}:${serverInfo.data.port} | ${ansiColors.cyan('{bar}')}| {percentage}% || {value}/{total}, загружаемая директория {dir}`,
+								barCompleteChar: '\u2588',
+								barIncompleteChar: '\u2591',
+								hideCursor: true
+							});
+
+							bar.start(info[1].length, 0);
+
+							for (const dir of info[1]){
+								bar.increment(1, {
+									dir
+								});
+
+								const photos = fs.readdirSync(this.PHOTOS_DIRECTORY + dir);
+
+								if (photos.length > 0){
+									await serverInfo.data.createDir(dir);
+
+									for (const photo of photos){
+										await serverInfo.data.uploadImage(this.PHOTOS_DIRECTORY + dir + "/" + photo, dir);
+									}
+								} else {
+									await serverInfo.data.createDir(dir);
+								}
+							}
+
+							Logger.blockMessages(false);
+							bar.stop();
+						}
+					}
+				}
+			}
+		} else {
+			Logger.enterLog(`Проверка не выявила ошибки целостности! `, LogLevel.INFO);
 		}
 	}
 

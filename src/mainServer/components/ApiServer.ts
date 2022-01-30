@@ -79,7 +79,13 @@ class ApiServer{
 		});
 
 		this.server.get(`/distribution/checkNetworkIntegrity`, async (req, res) =>{
-			this.distributor.checkNetworkIntegrity();
+			let fix = false;
+
+			if (req.query["fixErrors"] == "1"){
+				fix = true;
+			}
+
+			this.distributor.checkNetworkIntegrity(fix);
 			res.statusCode = 200; res.end();
 		});
 

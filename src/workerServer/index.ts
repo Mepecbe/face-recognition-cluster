@@ -260,7 +260,7 @@ class FaceRecognitionServer {
 			const fullPath = process.env.PHOTOS_DIRECTORY + req.query["dir"] + "/";
 
 			if (!fs.existsSync(fullPath)){
-				console.log(`create dir ${fullPath}`);
+				Logger.enterLog(`Create dir ${req.query["dir"]}`, LogLevel.WARN);
 				fs.mkdirSync(fullPath);
 			}
 
