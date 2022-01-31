@@ -1,11 +1,12 @@
 import { MainWorkerServer } from "../mainWorkerServer";
-import { WorkerServer } from "../types";
+import { BadDirsReport, WorkerServer } from "../types";
 import * as fs from "fs";
 import { Logger, LogLevel } from "../../../Logger";
 import { FileInfoStorage, FileStorage } from "./filesInfoStorage";
 import { RgResult, timeout } from "rg";
 import * as progress from "cli-progress";
 import * as ansiColors from "ansi-colors";
+import * as CRC32 from "crc-32";
 
 /**Основная задача - распределение файлов и папок между серверами */
 export class Distributor{
@@ -22,6 +23,18 @@ export class Distributor{
 	/**Получить количество директорий */
 	async getDirsCount(): Promise<number> {
 		return new Promise((resolve, reject) => {
+			if (!fs.existsSync(this.PHOTOS_DIRECTORY)){
+				fs.mkdir(this.PHOTOS_DIRECTORY, undefined, (err) => {
+					if (err){
+						Logger.enterLog(`Ошибка создания папки с фотографиями ${err?.code}`, LogLevel.ERROR);
+					} else {
+						Logger.enterLog(`Созданна папка с фотографиями`, LogLevel.WARN);
+					}
+				});
+
+				resolve(0);
+			}
+
 			fs.readdir(this.PHOTOS_DIRECTORY, (err, result) => {
 				if (err){
 					reject(err);
@@ -63,13 +76,12 @@ export class Distributor{
 
 	/**Загрузить список директорий находящихся на этом сервере и поместить список не распределенных */
 	async loadDirs(callback?: () => void, log = true): Promise<void> {
-		fs.readdir(this.PHOTOS_DIRECTORY, undefined, async (err, result) => {
+		fs.readdir(this.PHOTOS_DIRECTORY, undefined, async (err, dirsList) => {
 			if (err){
 				Logger.enterLog(`[loadDirs] Ошибка загрузки директорий ${err}`, LogLevel.ERROR);
 			}
 
 			let counter = 0;
-
 			let bar: progress.SingleBar | undefined = undefined;
 
 			if (log){
@@ -81,23 +93,22 @@ export class Distributor{
 					barIncompleteChar: '\u2591',
 					hideCursor: true
 				});
-				bar.start(result.length, 0);
+				bar.start(dirsList.length, 0);
 			}
 
-			for(const r of result){
-				if (bar){
-					bar.increment();
-				}
+			for(const dir of dirsList){
+				bar?.increment();
 				
-				if (this.notDistributedDirs.includes(r)){
+				if (this.notDistributedDirs.includes(dir)){
+					//Если папка уже есть в списке не распределенных
 					continue;
 				}
 
 				counter++;
-				this.notDistributedDirs.push(r);
+				this.notDistributedDirs.push(dir);
 				
 				if (counter % 1000 == 0){
-					//Что бы сервер не "задохнулся"
+					//Что бы сервер не "задохнулся" если папок много
 					await timeout(100);
 				}
 			}
@@ -107,6 +118,7 @@ export class Distributor{
 				Logger.blockMessages(false);
 			}
 
+			Logger.enterLog(`Загружено ${counter} директорий${this.filesDb.size != 0 ? ", рекомендуется провести сверку с базой!" : ""}`, LogLevel.INFO);
 
 			if (callback){
 				callback();
@@ -141,6 +153,7 @@ export class Distributor{
 	/**Проверка распределения файлов (сверка с данными из базы)
 	 * Проверяет каждую папку на наличие её на определенном сервере
 	 * Если папка существует на каком-либо сервере, то она удаляется из списка не распределенных папок
+	 * Проверка производится только в отношении локальной информации о распределении, для фактической проверки необходимо запускать проверку целостности сети!
 	 */
 	checkDistribution(): void {
 		if (this.filesDb.size == 0){
@@ -199,17 +212,14 @@ export class Distributor{
 	 * @argument fullCheck проверять ли файлы (если false - будет проверено только наличие папок)
 	 */
 	async checkNetworkIntegrity(fixServerErrors = false, fullCheck = false): Promise<void> {
-
-		if (fullCheck) the
-		
 		if (this.filesDb.size == 0){
 			Logger.enterLog(`[checkNetworkIntegrity] Проверка целостности сети прервана(серверов нет)`, LogLevel.WARN);
 			return;
 		} else {
-			Logger.enterLog(`[checkNetworkIntegrity] Начинаю проверку целостности сети`, LogLevel.WARN);
+			Logger.enterLog(`[checkNetworkIntegrity] Начинаю проверку целостности сети${fullCheck ? `, проверка контрольных сумм` : ""}${fixServerErrors ? `, авто-исправление ошибок` : ""}`, LogLevel.WARN);
 		}
 
-		let barServerDirs: Map<string, string[]> = new Map();
+		let barServerDirs: Map<string, BadDirsReport[]> = new Map();
 
 		for (const server of this.filesDb){
 			const serverInfo = this.server.workerManager.getServer(server[0]);
@@ -222,8 +232,9 @@ export class Distributor{
 					continue;
 				}
 
+				Logger.blockMessages(true);
 				const bar = new progress.SingleBar({
-					format: `Проверка целостности сервера ${serverInfo.data.url}:${serverInfo.data.port}|` + ansiColors.cyan('{bar}') + '| {percentage}% || {value}/{total} ',
+					format: `Проверка целостности сервера ${serverInfo.data.url}:${serverInfo.data.port}|` + ansiColors.cyan('{bar}') + '| {percentage}% || {value}/{total} Директория {dir}, файл {currFileNumber}/{totalFiles}',
 					barCompleteChar: '\u2588',
 					barIncompleteChar: '\u2591',
 					hideCursor: true
@@ -231,23 +242,86 @@ export class Distributor{
 
 				bar.start(server[1].length, 0);
 
-				const badDirs: string[] = [];
+				bar.increment(0, {
+					currFileNumber: 0,
+					totalFiles: 0,
+					dir: ""
+				});
+
+				//dir - [badPhoto1, badPhoto2], если опция fullCheck активна
+				const badDirs: BadDirsReport[] = [];
 
 				for (const dir of server[1]){
+					//Проверка директории удаленного сервера
+
 					const result = await serverInfo.data.dirExists(dir);
+					const badFiles: string[] = [];
+
+					bar.increment(1, {
+						currFileNumber: 0,
+						totalFiles: 0,
+						dir
+					});
 
 					if (!result.is_success){
 						if (result.error.code == 404){
-							badDirs.push(dir);
+							badDirs.push({
+								dir,
+								files: []
+							});
 						} else {
 							//Connection error
+							continue;
+						}
+					} else {
+						//Директория существует
+
+						if (fullCheck){
+							//Проверяем файлы директории
+							const files = fs.readdirSync(this.PHOTOS_DIRECTORY + dir);
+
+							if (files.length != 0){
+								for (let fileIndex = 0; fileIndex < files.length; fileIndex++){
+									bar.increment(0, {
+										currFileNumber: fileIndex+1,
+										totalFiles: files.length
+									});
+
+									const serverCheckFileResult = await serverInfo.data.photoExists(dir, files[fileIndex], true);
+
+									if (serverCheckFileResult.is_success){
+										//Файл существует
+										const originalFileCheckSumm = CRC32.buf(fs.readFileSync(this.PHOTOS_DIRECTORY + dir + "/" + files[fileIndex]), 0);
+
+										if (serverCheckFileResult.data !== originalFileCheckSumm){
+											//bad file
+											Logger.enterLog(`Контрольная сумма файлов не совпала ${dir}/${files[fileIndex]}`, LogLevel.WARN);
+											badFiles.push(files[fileIndex]);
+										}
+									} else {
+										//Файл не существует
+										if (serverCheckFileResult.error.code == 404){
+											badFiles.push(files[fileIndex]);
+										} else {
+											Logger.enterLog(`[checkNetworkIntegrity] UNKNOWN ERROR code ${serverCheckFileResult.error.code}, message ${serverCheckFileResult.error.message}, check dir ${dir}, file ${files[fileIndex]}`, LogLevel.ERROR);
+										}
+									}
+								}
+
+								if (badFiles.length > 0){
+									badDirs.push({
+										dir,
+										files: badFiles
+									})
+								}
+							}
 						}
 					}
-
-					bar.increment();
 				}
 
+
 				bar.stop();
+				Logger.blockMessages(false);
 
 				if (badDirs.length != 0){
 					barServerDirs.set(serverInfo.data.id, badDirs);
@@ -258,13 +332,17 @@ export class Distributor{
 		}
 
 		if (barServerDirs.size != 0){
-			Logger.enterLog(`Проверка выявила ошибки целостности! `, LogLevel.WARN);
+			Logger.enterLog(`[checkNetworkIntegrity] Проверка выявила ошибки целостности! `, LogLevel.WARN);
 
 			for (const info of barServerDirs){
 				Logger.enterLog(`  На сервере ${info[0]} найдено ${info[1].length} ошибок целостности${fixServerErrors ? `, начинаю исправление` : `, авто-исправление отключено`}`, LogLevel.INFO);
 			}
 
 			if (fixServerErrors){
+				let totalFilesUploaded = 0;
+				let totalUploadErrors = 0;
+				let notFoundDirs: string[] = [];
+
 				for (const info of barServerDirs){
 					const serverInfo = this.server.workerManager.getServer(info[0]);
 
@@ -272,6 +350,9 @@ export class Distributor{
 						const checkConnectResult = await serverInfo.data.checkConnection();
 
 						if (checkConnectResult.is_success){
+							let uploadedFiles = 0;
+							let uploadErrors = 0;
+
 							Logger.blockMessages(true);
 
 							const bar = new progress.SingleBar({
@@ -283,26 +364,52 @@ export class Distributor{
 
 							bar.start(info[1].length, 0);
 
-							for (const dir of info[1]){
+							for (const report of info[1]){
 								bar.increment(1, {
-									dir
+									dir: report.dir
 								});
 
-								const photos = fs.readdirSync(this.PHOTOS_DIRECTORY + dir);
+								if (!fs.existsSync(this.PHOTOS_DIRECTORY + report.dir)){
+									notFoundDirs.push(report.dir);
+									continue;
+								}
+
+								const photos = fs.readdirSync(this.PHOTOS_DIRECTORY + report.dir);
 
 								if (photos.length > 0){
 									for (const photo of photos){
-										await serverInfo.data.uploadImage(this.PHOTOS_DIRECTORY + dir + "/" + photo, dir);
+										const uploadPhotoResult = await serverInfo.data.uploadImage(this.PHOTOS_DIRECTORY + report.dir + "/" + photo, report.dir);
+										
+										if (uploadPhotoResult.is_success){
+											uploadedFiles++;
+										} else {
+											uploadErrors++;
+										}
 									}
 								} else {
-									await serverInfo.data.createDir(dir);
+									await serverInfo.data.createDir(report.dir);
 								}
 							}
 
-							Logger.blockMessages(false);
 							bar.stop();
+							Logger.blockMessages(false);
+
+							totalFilesUploaded += uploadedFiles;
+							totalUploadErrors += uploadErrors;
+
+							Logger.enterLog(`Исправление ошибок сервера завершено, выгружено файлов ${uploadedFiles}, ошибок выгрузки ${uploadErrors}, всего папок не найдено ${notFoundDirs.length}`, LogLevel.INFO);
 						}
 					}
+				}
+				
+				Logger.enterLog(`Исправление ошибок сети завершено, выгружено всего файлов ${totalFilesUploaded}, ошибок выгрузки ${totalUploadErrors}, всего папок не найдено на локальном носителе ${notFoundDirs.length}`, LogLevel.INFO);
+
+				if (totalUploadErrors != 0 || notFoundDirs.length != 0){
+					Logger.enterLog(`Рекомендуется провести повторную полную загрузку папок и проверку целостности сети!`, LogLevel.WARN);
+				}
+
+				if (notFoundDirs.length != 0){
+					Logger.enterLog(`Возможно требуется проверка локального носителя главного сервера!!!`, LogLevel.WARN);
 				}
 			}
 		} else {
@@ -314,23 +421,25 @@ export class Distributor{
 	async runAutoDistrib(
 		params: {
 			loadDirs: boolean,
-			checkDistibution: boolean
+			checkDistribution: boolean
 		}
 	): Promise<void> {
 		if (params.loadDirs){
+			Logger.enterLog(`[autoDistrib] Загрузка директорий`, LogLevel.WARN);
 			await this.loadDirs();
 		}
 
-		if (params.checkDistibution){
+		if (params.checkDistribution){
+			Logger.enterLog(`[autoDistrib] Проверка распределения`, LogLevel.WARN);
 			this.checkDistribution();
 		}
 
 		if (this.notDistributedDirs.length == 0){
-			Logger.enterLog(`[autoDistrib] Распределение файлов остановлено, нет не распределенных директорий`, LogLevel.WARN);
+			Logger.enterLog(`[autoDistrib] Распределение файлов остановлено, нет директорий доступных для распределения`, LogLevel.WARN);
 			return;
 		}
 
-		const countDirsPerServer = Math.floor(this.notDistributedDirs.length / this.filesDb.size);
+		const countDirsPerServer = Math.ceil(this.notDistributedDirs.length / this.filesDb.size);
 
 		Logger.enterLog(`[autoDistrib] Старт распределения, всего папок для распределения ${this.notDistributedDirs.length}, количество доступных серверов ${this.filesDb.size}, на один сервер приходится ${countDirsPerServer} файлов`, LogLevel.WARN);
 
@@ -436,6 +545,45 @@ export class Distributor{
 
 		Logger.enterLog(`[autoDistrib] Новые данные о распределении сохранены, выгружено ${totalUploadedDirs} папок`, LogLevel.WARN);
 		this.saveDb();
+	}
+
+	/**Автоматическое перераспределение */
+	async runReDistribution(): Promise<void> {
+		for (const srv of this.filesDb){
+			const serverInfo = this.server.workerManager.getServer(srv[0]);
+
+			if (serverInfo.is_success){
+				if ((await serverInfo.data.checkConnection()).is_success){
+					Logger.enterLog(`[runReDistribution] Очистка сервера ${serverInfo.data.url}:${serverInfo.data.port}`, LogLevel.WARN);
+					await serverInfo.data.rmDir("");
+					await timeout(4_000);
+				}
+			}
+		}
+
+		await timeout(6_000);
+
+		{
+			Logger.enterLog(`[runReDistribution] Очистка информации о распределении`, LogLevel.INFO);
+			this.filesDb.clear();
+
+			Logger.enterLog(`[runReDistribution] Обновление списка серверов для распределения`, LogLevel.INFO);
+			this.updateServersList();
+
+			Logger.enterLog(`[runReDistribution] Для распределения доступно серверов ${this.filesDb.size}`, LogLevel.INFO);
+		}
+
+		{
+			await this.loadDirs();
+			Logger.enterLog(`[runReDistribution] Доступно папок для распределения ${this.notDistributedDirs.length}`, LogLevel.INFO);
+		}
+
+		await timeout(1_000);
+
+		await this.runAutoDistrib({
+			loadDirs: false,
+			checkDistribution: false
+		})
 	}
 
 	/**Загрузить данные о распределении файлов и папок среди сети серверов из хранилища */

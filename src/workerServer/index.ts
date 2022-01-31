@@ -161,7 +161,7 @@ class FaceRecognitionServer {
 				return;
 			}
 			
-			Logger.enterLog(`[/fileUpload] Received file ${filedata.size} bytes`, LogLevel.WARN);
+			Logger.enterLog(`[/fileUpload] Received file ${filedata.size.toFixed(2)} bytes`, LogLevel.WARN);
 
 			//Возвращаем оригинальный формат файла
 			fs.rename(
@@ -227,21 +227,33 @@ class FaceRecognitionServer {
 			
 			const fullPath = process.env.PHOTOS_DIRECTORY + req.query["dir"] + "/";
 
-			Logger.enterLog(`[/addFile] Received file ${filedata.size} bytes`, LogLevel.WARN);
+			Logger.enterLog(`[/addFile] Received file ${(filedata.size / 1024).toFixed(2)} Kb -> ${filedata.originalname}`, LogLevel.WARN);
 
 			if (!fs.existsSync(fullPath)){
 				fs.mkdirSync(fullPath);
 			}
 
 			//Возвращаем оригинальный формат файла и перемещаем в нужную директорию
-			
-			Logger.enterLog(`[/addFile] Move from >${`uploads/${filedata.filename}`}< to >${fullPath + `${filedata.filename}.${filedata.originalname.split(".")[1]}`}<`, LogLevel.WARN);
-			
 			fs.rename(
 				`uploads/${filedata.filename}`,
-				fullPath + `${filedata.filename}.${filedata.originalname.split(".")[1]}`,
+				fullPath + `${filedata.originalname}`,
 				(err) => { console.error(err); }
 			);
+
+			res.statusCode = 200;
+			res.end();
+		});
+
+		this.Server.get('/removeDir', async (req, res) => {
+			if (typeof(req.query["dirname"]) !== "string"){
+				res.write(`Param dir is undefined!`);
+				res.statusCode = 400;
+				res.end();
+				return;
+			}
+
+			Logger.enterLog(`Удаляю директорию ${req.query["dirname"]}`, LogLevel.INFO);
+			this.taskManager.photosManager.rmDir(req.query["dirname"]);
 
 			res.statusCode = 200;
 			res.end();
@@ -283,6 +295,41 @@ class FaceRecognitionServer {
 				//Если директория существует, то отвечаем сколько файлов в ней находится
 				let count = fs.readdirSync(fullPath).length;
 				res.write(count.toString());
+				res.statusCode = 200;
+				res.end();
+			} else {
+				res.statusCode = 404;
+				res.end();
+			}
+		});
+
+
+		this.Server.get('/checkPhoto', async (req, res) => {
+			let getCheckSumm = false;
+			
+			if (typeof(req.query["dirname"]) !== "string"){
+				res.write(`Param dirname is undefined`);
+				res.statusCode = 400;
+				res.end();
+				return;
+			}
+
+			if (typeof(req.query["photo"]) !== "string"){
+				res.write(`Param dirname is undefined`);
+				res.statusCode = 400;
+				res.end();
+				return;
+			}
+
+			if (req.query["checksumm"] == "1"){
+				getCheckSumm = true;
+			}
+		
+			const result = this.taskManager.photosManager.checkPhoto(req.query["dirname"], req.query["photo"], getCheckSumm);
+			Logger.enterLog(`Проверка файла ${req.query["dirname"]}/${req.query["photo"]}`, LogLevel.INFO);
+	
+			if (result != 0){
+				res.write(result.toString());
 				res.statusCode = 200;
 				res.end();
 			} else {

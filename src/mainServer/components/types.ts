@@ -109,6 +109,7 @@ export class WorkerServer {
 		}
 	}
 
+	/**Узнать количество всех задач (активных + тех что в очереди) */
 	public async getTasksCount(): Promise<RgResult<number>> {
 		const result = await this.client.request({
 			path: "/getTasksCount",
@@ -158,6 +159,9 @@ export class WorkerServer {
 		}
 	}
 
+	/**Проверить существование папки с фотографиями
+	 * в случае успеха возвращает количество файлов в папке
+	 */
 	public async dirExists(dir: string): Promise<RgResult<number>> {
 		const result = await this.checkConnection();
 
@@ -179,6 +183,78 @@ export class WorkerServer {
 						error: {
 							code: result.http_status_code,
 							message: `404 not found`
+						}
+					}
+				}
+			} else {
+				return result;
+			}
+		} else {
+			return {
+				is_success: false,
+				error: {
+					code: 1,
+					message: `Check connection error`
+				}
+			}
+		}
+	}
+
+	/**Удалить директорию на удалённом сервере */
+	public async rmDir(dir: string): Promise<RgResult<null>> {
+		const result = await this.checkConnection();
+
+		if (result.is_success){
+			const result = await this.client.request({
+				path: `/removeDir?dirname=${dir}`,
+				method: "GET"
+			}, null)
+
+			if (result.is_success){
+				return {
+					is_success: true,
+					data: null
+				}
+			} else {
+				return result;
+			}
+		} else {
+			return {
+				is_success: false,
+				error: {
+					code: 1,
+					message: `Check connection error`
+				}
+			}
+		}
+	}
+
+	/**Проверить существование файла 
+	 * @param dir наименование директории
+	 * @param photo наименование фотографии
+	 * @param getCheckSumm запросить контрольную сумму
+	*/
+	public async photoExists(dir: string, photo: string, getCheckSumm = false): Promise<RgResult<number>>{
+		const result = await this.checkConnection();
+
+		if (result.is_success){
+			const result = await this.client.request({
+				path: `/checkPhoto?dirname=${dir}&photo=${photo}&checksumm=${getCheckSumm ? "1" : "0"}`,
+				method: "GET"
+			}, null)
+
+			if (result.is_success){
+				if (result.http_status_code == 200){
+					return {
+						is_success: true,
+						data: getCheckSumm ? parseInt(result.data) : 0
+					}
+				} else {
+					return {
+						is_success: false,
+						error: {
+							code: result.http_status_code,
+							message: `404 dir not found`
 						}
 					}
 				}
@@ -219,4 +295,13 @@ export class WorkerServer {
 			}
 		});
 	}
+}
+
+/**Информация о найденых ошибках на сервере
+ * @field dir - наименование директории которая либо не существует, либо в которой найдены ошибочные файлы
+ * @field files - наименование файлов, которые признаны ошибочными
+ */
+export type BadDirsReport = {
+	dir: string,
+	files: string[]
 }

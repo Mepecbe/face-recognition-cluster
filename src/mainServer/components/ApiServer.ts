@@ -117,21 +117,21 @@ class ApiServer{
 			res.statusCode = 200; res.end();
 		});
 
-		this.server.get('/distribution/checkFullNetworkIntegrity', async (req, res) => {
-
-		});
-
 		this.server.get(`/distribution/startAutoDistrib`, async (req, res) =>{
 			/**
-			 * Загрузка директорий будет произведена, если директории не загружены
-			 * Проверка распределения будет произведена, если директории не были загружены
-			 * 			 * 
+			 * Загрузка директорий и проверка распределения будет произведена, если список не распределенных директорий пуст
 			 */
+			
 			this.distributor.runAutoDistrib({
-				loadDirs: (await this.distributor.getDirsCount() == 0),
-				checkDistibution: (await this.distributor.getDirsCount() == 0)
+				loadDirs: (this.distributor.getNotDistributedCount() == 0),
+				checkDistribution: (this.distributor.getNotDistributedCount() == 0)
 			});
 
+			res.statusCode = 200; res.end();
+		});
+		
+		this.server.get(`/distribution/runReDistribution`, async (req, res) =>{
+			this.distributor.runReDistribution();
 			res.statusCode = 200; res.end();
 		});
 

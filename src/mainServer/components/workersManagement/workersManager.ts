@@ -3,6 +3,7 @@ import * as fs from "fs";
 import { Logger, LogLevel } from "../../../Logger";
 import { RgResult } from "rg";
 import { FileServersInfoStorage, IServersInfoStorage } from "./serverInfoStorage";
+import * as CRC32 from "crc-32";
 
 /**Менеджер серверов */
 export class WorkersManager {
