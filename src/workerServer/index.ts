@@ -210,7 +210,6 @@ class FaceRecognitionServer {
 			const filedata = req.file;
 
 			if (!filedata){
-				console.log(`filedata is undefined`);
 				res.write("filedata is undefined");
 				res.statusCode = 400;
 				res.end();
@@ -218,7 +217,6 @@ class FaceRecognitionServer {
 			}
 
 			if (typeof(req.query["dir"]) !== "string"){
-				console.log(`param dir is undefined`);
 				res.write("param dir is undefined");
 				res.statusCode = 400;
 				res.end();

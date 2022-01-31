@@ -441,7 +441,7 @@ export class Distributor{
 
 		const countDirsPerServer = Math.ceil(this.notDistributedDirs.length / this.filesDb.size);
 
-		Logger.enterLog(`[autoDistrib] Старт распределения, всего папок для распределения ${this.notDistributedDirs.length}, количество доступных серверов ${this.filesDb.size}, на один сервер приходится ${countDirsPerServer} файлов`, LogLevel.WARN);
+		Logger.enterLog(`[autoDistrib] Старт распределения, всего папок для распределения ${this.notDistributedDirs.length}, количество доступных серверов ${this.filesDb.size}, на один сервер приходится ${countDirsPerServer} папок`, LogLevel.WARN);
 
 		let totalUploadedDirs = 0;
 
@@ -482,6 +482,7 @@ export class Distributor{
 					const dir = this.notDistributedDirs.pop();
 
 					if (!dir){
+						Logger.enterLog(`[runAutoDistrib] Unknown error, dir undefined`, LogLevel.WARN);
 						continue;
 					}
 
@@ -534,10 +535,6 @@ export class Distributor{
 				Logger.blockMessages(false);
 
 				Logger.enterLog(`На сервер ${serverInfo.data.url}:${serverInfo.data.port} отправлено ${filesUploaded} файлов ${filesUploadError != 0 ? `, не отправлено ${filesUploadError} файлов` : ""} ${ dirsUploadErrors.length != 0 ? `, не отправлено ${dirsUploadErrors.length} папок ` : ``}`, LogLevel.INFO);
-				
-				if (dirsUploadErrors.length != 0){
-					Logger.enterLog(`Не удалось выгрузить ${dirsUploadErrors.length} папок`, LogLevel.WARN);
-				}
 			} else {
 				Logger.enterLog(`[autoDistrib] Информация о сервере не найдена, srv id ${serverFiles[0]}`, LogLevel.WARN);
 			}
