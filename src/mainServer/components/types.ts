@@ -239,7 +239,7 @@ export class WorkerServer {
 
 		if (result.is_success){
 			const result = await this.client.request({
-				path: `/checkPhoto?dirname=${dir}&photo=${photo}&checksumm=${getCheckSumm ? "1" : "0"}`,
+				path: encodeURI(`/checkPhoto?dirname=${dir}&photo=${photo}&checksumm=${getCheckSumm ? "1" : "0"}`),
 				method: "GET"
 			}, null)
 

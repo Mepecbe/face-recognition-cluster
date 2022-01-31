@@ -98,7 +98,7 @@ export class Distributor{
 
 			for(const dir of dirsList){
 				bar?.increment();
-				
+
 				if (this.notDistributedDirs.includes(dir)){
 					//Если папка уже есть в списке не распределенных
 					continue;
