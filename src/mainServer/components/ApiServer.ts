@@ -49,22 +49,11 @@ class ApiServer{
 		this.server.get(`/`, async (req, res) =>{
 			res.statusCode = 200; res.end();
 		});
-
-		this.server.get('/serversList', async (req, res) => {
-			const servers = this.mainWorkerServer.workerManager.getServers();
-			const data: any[] = [];
-
-			for (const server of servers){
-				data.push({
-					id: server.id,
-					url: server.url,
-					cpu_count: server.cpu_count,
-					dirsCount: server.dirsCount
-				});
-			}
-
-			res.write(JSON.stringify(data));
-			res.statusCode = 200; res.end();
+		
+		this.server.post(`/`, async (req, res) => {
+			const jsonData: unknown | null = req.body;
+			res.statusCode = 200;
+			res.end();
 		});
 
 
@@ -135,16 +124,6 @@ class ApiServer{
 			res.statusCode = 200; res.end();
 		});
 
-		this.server.get('/getLag', async (req, res) => {
-			const start = new Date()
-			setTimeout(() => {
-				const lag = ((new Date().getMilliseconds()) - start.getMilliseconds());
-				
-				res.write(lag.toString());
-				res.statusCode = 200; res.end();
-			})
-		})
-
 		this.server.get('/distribution/updateServerList', async (req, res) => {
 			res.write(this.distributor.updateServersList().toString());
 			res.statusCode = 200; res.end();
@@ -155,10 +134,36 @@ class ApiServer{
 			res.statusCode = 200; res.end();
 		})
 
-		this.server.post(`/`, async (req, res) => {
-			const jsonData: unknown | null = req.body;
-			res.statusCode = 200;
-			res.end();
+
+
+
+		
+		this.server.get('/getLag', async (req, res) => {
+			const start = new Date()
+			setTimeout(() => {
+				const lag = ((new Date().getMilliseconds()) - start.getMilliseconds());
+				
+				res.write(lag.toString());
+				res.statusCode = 200; res.end();
+			})
+		});
+
+		this.server.get('/serversList', async (req, res) => {
+			const servers = this.mainWorkerServer.workerManager.getServers();
+			const data: any[] = [];
+
+			for (const server of servers){
+				data.push({
+					id: server.id,
+					url: server.url,
+					port: server.port,
+					cpu_count: server.cpu_count,
+					dirsCount: server.dirsCount
+				});
+			}
+
+			res.write(JSON.stringify(data));
+			res.statusCode = 200; res.end();
 		});
 	}
 }
