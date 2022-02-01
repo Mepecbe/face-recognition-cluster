@@ -8,6 +8,5 @@ config.json
 ormconfig.json
 .vscode
 src/.vs/
-src/.vs/
-src/.vs/
-src/.vs/
+test-blessed
+src/testUI.ts

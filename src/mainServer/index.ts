@@ -5,6 +5,7 @@ import * as fs from "fs";
 import { Distributor } from "./components/filesDistribution/fileDistributor";
 import { WorkersManager } from "./components/workersManagement/workersManager";
 import { FileServersInfoStorage } from "./components/workersManagement/serverInfoStorage";
+import { Logger } from "../Logger";
 
 async function main(): Promise<void> {
 	if (!fs.existsSync(process.env.PHOTOS_DIRECTORY || "images")){
