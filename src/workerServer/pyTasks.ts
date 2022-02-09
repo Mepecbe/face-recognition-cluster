@@ -5,12 +5,13 @@ import {
 	exec,
 	execFile
 } from "child_process";
-import { Event, timeout } from "rg";
+import { Event, RgResult, timeout } from "rg";
 import * as uuid from "uuid";
 import { Logger, LogLevel } from "../Logger";
 import * as os from "os";
 import { PhotosManager } from "./photosDbManager";
 import { Utils } from "./utils";
+import * as fs from "fs";
 
 export enum TaskState {
 	WaitLoadSourceImage,
@@ -97,7 +98,7 @@ export class WorkerTaskManager {
 				sourceFaceDir: task.sourceFace
 			});
 		} else {
-			Logger.enterLog(`[taskCompleted] Task ${id} not found`, LogLevel.ERROR);
+			Logger.enterLog(`[taskCompleted] Task ${id} not found, task result ${found}`, LogLevel.ERROR);
 		}
 	}
 
@@ -135,21 +136,50 @@ export class WorkerTaskManager {
 		Logger.enterLog(`Run task ${id}, active ${this.activeTaskPool.size}`, LogLevel.INFO);
 	}
 
-	/**Добавить задачу в очередь */
+	/**
+	 * Добавить задачу в очередь 
+	 */
 	public addTask(
 		filename: string,
 		checkDirectory: string
-	): string {
-		const id = uuid.v4();
-		Logger.enterLog(`Create pending task ${id}, file ${filename}, dir ${checkDirectory}`, LogLevel.INFO);
+	): Promise<RgResult<string>> {
+		return new Promise<RgResult<string>>((resolve, reject) => {
+			fs.readdir(process.env.PHOTOS_DIRECTORY + checkDirectory, (err, result) => {
+				if (err){
+					resolve({
+						is_success: false,
+						error: {
+							code: 1,
+							message: err.message
+						}
+					});
+				} else {
+					if (result.length == 0){
+						resolve({
+							is_success: false,
+							error: {
+								code: 1,
+								message: `Not files in directory`
+							}
+						});
+					} else {
+						const id = uuid.v4();
+						Logger.enterLog(`Create pending task ${id}, file ${filename}, dir ${checkDirectory}`, LogLevel.INFO);
 
-		this.pendingTaskPool.push({
-			id,
-			sourceFile: "uploads/" + filename,
-			checkDir: process.env.PHOTOS_DIRECTORY + checkDirectory
-		})
+						this.pendingTaskPool.push({
+							id,
+							sourceFile: "uploads/" + filename,
+							checkDir: process.env.PHOTOS_DIRECTORY + checkDirectory
+						})
 
-		return id;
+						resolve({
+							is_success: true,
+							data: id
+						});
+					}
+				}
+			});
+		});
 	}
 
 	async loader(): Promise<void> {

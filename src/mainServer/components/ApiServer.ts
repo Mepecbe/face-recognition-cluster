@@ -23,13 +23,20 @@ import { Logger, LogLevel } from '../../Logger';
 import 'dotenv/config';
 import { MainWorkerServer } from './mainWorkerServer';
 import { Distributor } from './filesDistribution/fileDistributor';
+import * as multer from "multer";
+import * as fs from "fs";
 
 /**API сервер для взаимодействия с подключаемыми внешними сервисами*/
 class ApiServer{
 	private readonly server: ExpressFramework.Express;
 	private readonly mainWorkerServer: MainWorkerServer;
 	private readonly distributor: Distributor;
+	private readonly temporaryFilesDir: string;
 
+	/**
+	 * Запустить HTTP сервер
+	 * @param port Порт сервера
+	 */
 	runServer(port: number): void {
 		Logger.enterLog(`[ApiServer] Запуск сервера на порту ${port}`, LogLevel.INFO);
 		this.server.listen(port);
@@ -37,25 +44,28 @@ class ApiServer{
 
 	constructor(
 		mainWorkerServer: MainWorkerServer,
-		distributor: Distributor
+		distributor: Distributor,
+		temporaryFilesDir: string
 	){
 		this.distributor = distributor;
 		this.mainWorkerServer = mainWorkerServer;
+		this.temporaryFilesDir = temporaryFilesDir;
 		this.server = ExpressFramework();
 		
+		this.server.use(multer( { dest: this.temporaryFilesDir } ).single("filedata"));
 		this.server.use(BodyParser.json());
-		//this.Server.use(BodyParser.urlencoded());
 
 		this.server.get(`/`, async (req, res) =>{
 			res.statusCode = 200; res.end();
 		});
 		
 		this.server.post(`/`, async (req, res) => {
-			const jsonData: unknown | null = req.body;
-			res.statusCode = 200;
-			res.end();
+			res.statusCode = 200; res.end();
 		});
 
+		
+
+		/**============================ РАСПРЕДЕЛЕНИЕ ============================= */
 
 		this.server.get(`/distribution/dirsCount`, async (req, res) =>{
 			res.write((await this.distributor.getDirsCount()).toString());
@@ -107,10 +117,8 @@ class ApiServer{
 		});
 
 		this.server.get(`/distribution/startAutoDistrib`, async (req, res) =>{
-			/**
-			 * Загрузка директорий и проверка распределения будет произведена, если список не распределенных директорий пуст
-			 */
-			
+			// Загрузка директорий и проверка распределения будет произведена, если список не распределенных директорий пуст
+
 			this.distributor.runAutoDistrib({
 				loadDirs: (this.distributor.getNotDistributedCount() == 0),
 				checkDistribution: (this.distributor.getNotDistributedCount() == 0)
@@ -136,8 +144,8 @@ class ApiServer{
 
 
 
+		/**============================ СЕРВЕРНЫЕ УТИЛИТЫ ============================= */
 
-		
 		this.server.get('/getLag', async (req, res) => {
 			const start = new Date()
 			setTimeout(() => {
@@ -163,6 +171,35 @@ class ApiServer{
 			}
 
 			res.write(JSON.stringify(data));
+			res.statusCode = 200; res.end();
+		});
+
+
+		this.server.post('/createTask', async (req, res) => {
+			const filedata = req.file;
+
+			if (!filedata){
+				res.write("filedata is undefined");
+				res.statusCode = 400; res.end();
+				return;
+			}
+			
+			Logger.enterLog(`[/createTask] Received data ${(filedata.size / 1024).toFixed(2)} KBytes`, LogLevel.WARN);
+
+			fs.rename(
+				`${this.temporaryFilesDir}/${filedata.filename}`,
+				`${this.temporaryFilesDir}/${filedata.filename}.${filedata.originalname.split(".")[1]}`,
+				(err) => {
+					if (err){
+						Logger.enterLog(
+							`Возникла ошибка при переименовании файла ${this.temporaryFilesDir}/${filedata.filename} в ${this.temporaryFilesDir}/${filedata.filename}.${filedata.originalname.split(".")[1]}, код ошибки ${err.code}`, 
+							LogLevel.ERROR
+						);
+					}
+				}
+			);
+
+
 			res.statusCode = 200; res.end();
 		});
 	}

@@ -54,7 +54,9 @@ export class WorkersManager {
 		return this.servers;
 	}
 
-	/**Сохранить информацию о серверах в файл */
+	/**
+	 * Сохранить информацию о серверах в файл 
+	 * */
 	saveToStorage(): void {
 		this.storage.saveAll(
 			this.servers.map((srv) => {
@@ -69,11 +71,16 @@ export class WorkersManager {
 		)
 	}
 
-	/**Проверить, есть ли сервер с таким идентификатором */
+	/**
+	 * Проверить, есть ли сервер с таким идентификатором 
+	 * */
 	existsServerById(id: string): boolean {
 		return this.servers.map(s => { return s.id == id; }).includes(true);
 	}
 
+	/**
+	 * Получить сервер по идентификатору
+	 * */
 	getServer(id: string): RgResult<WorkerServer> {
 		for (const s of this.servers){
 			if (s.id == id){
@@ -93,7 +100,9 @@ export class WorkersManager {
 		}
 	}
 
-	/**Проверить, есть ли сервер с такимими ДАННЫМИ */
+	/**
+	 * Проверить, есть ли сервер с такимими ДАННЫМИ 
+	 * */
 	existsServer(url: string, port: number, cpuCount: number): boolean {
 		return this.servers.map(
 			s => {
@@ -103,7 +112,9 @@ export class WorkersManager {
 	}
 
 
-	/**Отсеять самый мощный сервер */
+	/**
+	 * Отсеять самый мощный сервер
+	 * */
 	public parseCpuCount(servers: WorkerServer[]): WorkerServer {
 		if (servers.length == 0){
 			throw new Error("Servers list is empty");
@@ -126,7 +137,9 @@ export class WorkersManager {
 		return w;
 	}
 	
-	/**Отсеять самый не загруженный сервер*/
+	/**
+	 * Отсеять самый не загруженный сервер
+	 * */
 	public parseTasksCount(): WorkerServer {
 		if (this.servers.length == 0){
 			throw new Error("Servers list is empty");
@@ -150,7 +163,9 @@ export class WorkersManager {
 	}
 
 	
-	/**Чекер серверов(проверяет пинг, загруженность задачами) */
+	/**
+	 * Чекер серверов(проверяет пинг, загруженность задачами)
+	 * */
 	async serversChecker(): Promise<void> {
 		for(const srv of this.servers){
 			await srv.checkConnection();

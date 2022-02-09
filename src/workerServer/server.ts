@@ -93,7 +93,7 @@ export class FaceRecognitionServer {
 			if (typeof(req.query["id"]) !== "string"){
 				return;
 			}
-			
+
 			switch(req.query["action"]){
 				case "start": {
 					Logger.enterLog(`Task ${req.query["id"]} is started!`, LogLevel.WARN);
@@ -149,18 +149,18 @@ export class FaceRecognitionServer {
 		});
 
 		//ДЛЯ ПРИЁМА ФАЙЛОВ НА ПРОВЕРКУ
-		this.Server.post(`/fileUpload`, async (req, res) => {
+		this.Server.post(`/uploadCheckFile`, async (req, res) => {
 			const filedata = req.file;
 
 			if (!filedata){
-				console.log(`[/fileUpload] Unknown request, filedata is undefined`);
+				console.log(`[/uploadCheckFile] Неизвестный запрос, filedata не определена`);
 				res.write("filedata is undefined");
 				res.statusCode = 400;
 				res.end();
 				return;
 			}
 			
-			Logger.enterLog(`[/fileUpload] Received file ${filedata.size.toFixed(2)} bytes`, LogLevel.WARN);
+			Logger.enterLog(`[/fileUpload] Принят файл ${(filedata.size / 1024).toFixed(2)} КБайт`, LogLevel.WARN);
 
 			//Возвращаем оригинальный формат файла
 			fs.rename(
@@ -183,7 +183,6 @@ export class FaceRecognitionServer {
 				return;
 			}
 
-
 			if (!this.taskManager.photosManager.checkExistsDir(req.query["directory"])){
 				res.statusCode = 400;
 				res.write("directory not found");
@@ -191,13 +190,19 @@ export class FaceRecognitionServer {
 				return;
 			}
 
-			const id = this.taskManager.addTask(
+			const createResult = await this.taskManager.addTask(
 				req.query["fileid"],
 				req.query["directory"]
 			);
 
-			res.write(id);
-			res.statusCode = 200;
+			if (createResult.is_success){
+				res.write(createResult.data);
+				res.statusCode = 200;
+			} else {
+				res.write(createResult.error.message);
+				res.statusCode = 400;
+			}
+
 			res.end();
 		});
 

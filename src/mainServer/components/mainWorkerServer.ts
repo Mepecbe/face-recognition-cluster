@@ -1,7 +1,7 @@
 import { Logger, LogLevel } from "../../Logger";
 import * as ExpressFramework from "express";
 import * as BodyParser from "body-parser";
-import { WorkerServer } from "./types";
+import { SearchFaceTask, WorkerServer } from "./types";
 import { RgResult } from "rg";
 import { Utils } from "./utils";
 import request = require("request");
@@ -17,49 +17,17 @@ export class MainWorkerServer{
 	//Менеджер серверов
 	public workerManager: WorkersManager;
 
-	/**Определить сервер, который будет выполнять задачу ПО ПОИСКУ ЛИЦА и загрузить на него фотографию */
-	public async uploadImage(pathToFile: string): Promise<RgResult<{
-		server: WorkerServer,
-		imageId: string
-	}>>{
-		const server = this.workerManager.parseTasksCount();
+	//Пул задач
+	public tasksPool: SearchFaceTask[] = [];
 
-		const result = await server.checkConnection();
-		if (result.is_success){
-			const fileId = await new Promise<string>((resolve, reject) => {request.post(
-				`http://${server.url}:${server.port}/fileUpload`,
-				{
-					port: 9032,
-					formData: {
-						filedata: fs.createReadStream(pathToFile)
-					}
-				},
-				(err, response, body) => {
-					if (err){
-						reject(err);
-					} else if (response){
-						resolve(response.body);
-					}
-				}
-			)});
-
-			console.log(`File UPLOAD, id ${fileId}`);
-			return {
-				is_success: true,
-				data: {
-					server,
-					imageId: fileId
-				}
-			}
-		} else {
-			return {
-				is_success: false,
-				error: {
-					code: 1,
-					message: `Check connection error`
-				}
+	private getTaskById(id: string): SearchFaceTask | null {
+		for (const t of this.tasksPool){
+			if (t.id == id){
+				return t;
 			}
 		}
+
+		return null;
 	}
 
 	/**Создать задачу по поиску лица на сервере
@@ -69,7 +37,6 @@ export class MainWorkerServer{
 	 * @returns Идентификатор созданной задачи
 	 */
 	public async createTask(fileId: string, server: WorkerServer, dirname: string): Promise<RgResult<string>>{
-		//http://127.0.0.1:9009/createTask?fileid=46779127c191961bb922743fca0812b1&directory=qwerty
 		const result = await server.checkConnection();
 		if (result.is_success){
 			const result = await server.client.request({
@@ -97,10 +64,15 @@ export class MainWorkerServer{
 	}
 
 
+	/**
+	 * Запустить главный управляющий сервер
+	 * @argument port Порт для приёма информации от воркеров
+	 */
 	runServer(port: number): void {
 		Logger.enterLog(`[MainWorkerServer] Запуск управляющего сервера на порту ${port}`, LogLevel.INFO);
 		this.Server.listen(port);
 	}
+
 
 	constructor(
 		workersManager: WorkersManager
@@ -117,7 +89,40 @@ export class MainWorkerServer{
 			res.end();
 		});
 
-		
+		this.Server.get(`/taskResult`, async (req, res) => {
+			if (typeof(req.query["taskid"]) != "string"){
+				res.write(`param taskId is undefined`);
+				res.statusCode = 400; res.end();
+				return;
+			}
+
+			const task = this.getTaskById(req.query["taskid"]);
+
+			if (!task){
+				Logger.enterLog(`Внимание! Завершенная задача ${req.query["taskid"]} не была найдена в пуле`, LogLevel.WARN);
+				res.statusCode = 400; res.end();
+			} else {
+				task.completed.push()
+
+				if (typeof(req.query["found"]) != "string"){
+					res.write(`param found is undefined`);
+					res.statusCode = 400; res.end();
+				} else {
+	
+					if (req.query["found"] == "1"){
+						if (typeof(req.query["faceId"]) !== "string"){
+							res.write(`param faceId is undefined`);
+							res.statusCode = 400; res.end();
+						} else {
+							
+						}
+					} else {
+	
+					}
+				}
+			}
+		});
+
 		this.Server.get(`/addServer`, async (req, res) =>{
 			const DESTINATION_SERVER_URL = req.query["ip"]?.toString();
 			const DESTINATION_SERVER_PORT = req.query["port"]?.toString();

@@ -8,8 +8,14 @@ import { FileServersInfoStorage } from "./components/workersManagement/serverInf
 import { Logger } from "../Logger";
 
 async function main(): Promise<void> {
+	Logger.init();
+
 	if (!fs.existsSync(process.env.PHOTOS_DIRECTORY || "images")){
 		fs.mkdirSync(process.env.PHOTOS_DIRECTORY || "images");
+	}
+
+	if (!fs.existsSync(process.env.DEFAULT_TEMPORARY_IMAGES_DIR || "temporaryFiles")){
+		fs.mkdirSync(process.env.DEFAULT_TEMPORARY_IMAGES_DIR || "temporaryFiles");
 	}
 
 	const serversStorage = new FileServersInfoStorage(process.env.SERVERS_INFO_FILE || "servers.db");
@@ -38,7 +44,8 @@ async function main(): Promise<void> {
 
 	const server = new ApiServer(
 		mainWorkerServer,
-		distrib
+		distrib,
+		process.env.DEFAULT_TEMPORARY_IMAGES_DIR || "temporaryFiles"
 	);
 	
 	mainWorkerServer.runServer(parseInt(process.env.MAIN_WORKER_SERVER_PORT || "9010"));

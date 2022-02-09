@@ -50,4 +50,14 @@ export class Logger {
 
 		return this.blockState;
 	}
+
+	public static init(): void {
+		console.error = (msg: any) => {
+			if (msg == null || typeof(msg) == undefined){
+				return;
+			}
+
+			this.enterLog(`Возникла непредвиденная ошибка ${msg}`, LogLevel.ERROR);
+		}
+	}
 }

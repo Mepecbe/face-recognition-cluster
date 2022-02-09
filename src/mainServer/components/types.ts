@@ -16,6 +16,10 @@ export class WorkerServer {
 	public dirs: string[];
 	public readonly client: RgWeb;
 
+	/**
+	 * Проверить соединение
+	 * @returns пинг до сервера
+	 */
 	public async checkConnection(): Promise<RgResult<number>> {
 		try{
 			const result = await ping(this.url, this.port);
@@ -38,7 +42,51 @@ export class WorkerServer {
 		}
 	}
 
-	/**Загрузить фотографию на сервер(пополнение базы фотографий) */
+	/**
+	 * Загрузить фотографию на сервер и получить её айди для создания будущих задач по поиску лица
+	 * @param pathToFile Путь к загружаемой фотографии
+	 */
+	public async getImageId(
+		pathToFile: string
+	): Promise<RgResult<string>> {
+		const result = await this.checkConnection();
+
+		if (result.is_success){
+			const fileId = await new Promise<string>((resolve, reject) => {request.post(
+				`http://${this.url}:${this.port}/fileUpload`,
+				{
+					port: 9032,
+					formData: {
+						filedata: fs.createReadStream(pathToFile)
+					}
+				},
+				(err, response, body) => {
+					if (err){
+						reject(err);
+					} else if (response){
+						resolve(response.body);
+					}
+				}
+			)});
+
+			return {
+				is_success: true,
+				data: fileId
+			}
+		} else {
+			return {
+				is_success: false,
+				error: {
+					code: 1,
+					message: `Check connection error`
+				}
+			}
+		}
+	}
+
+	/**
+	 * Загрузить фотографию на сервер(пополнение базы фотографий) 
+	 * */
 	public async uploadImage(
 		pathToFile: string,
 		dirname: string
@@ -79,7 +127,9 @@ export class WorkerServer {
 		}
 	}
 
-	/**Создать папку на сервере */
+	/**
+	 * Создать папку на сервере 
+	 * */
 	public async createDir(
 		dirname: string
 	): Promise<RgResult<null>>{
@@ -109,7 +159,9 @@ export class WorkerServer {
 		}
 	}
 
-	/**Узнать количество всех задач (активных + тех что в очереди) */
+	/**
+	 * Узнать количество всех задач (активных + тех что в очереди) 
+	 * */
 	public async getTasksCount(): Promise<RgResult<number>> {
 		const result = await this.client.request({
 			path: "/getTasksCount",
@@ -129,7 +181,9 @@ export class WorkerServer {
 		return result;
 	}
 
-	/**Получить список директорий на сервере */
+	/**
+	 * Получить список директорий на сервере 
+	 * */
 	public async getDirs(): Promise<RgResult<string[]>>{
 		const result = await this.checkConnection();
 		if (result.is_success){
@@ -159,7 +213,8 @@ export class WorkerServer {
 		}
 	}
 
-	/**Проверить существование папки с фотографиями
+	/**
+	 * Проверить существование папки с фотографиями
 	 * в случае успеха возвращает количество файлов в папке
 	 */
 	public async dirExists(dir: string): Promise<RgResult<number>> {
@@ -200,7 +255,9 @@ export class WorkerServer {
 		}
 	}
 
-	/**Удалить директорию на удалённом сервере */
+	/**
+	 * Удалить директорию на удалённом сервере
+	 * */
 	public async rmDir(dir: string): Promise<RgResult<null>> {
 		const result = await this.checkConnection();
 
@@ -229,7 +286,8 @@ export class WorkerServer {
 		}
 	}
 
-	/**Проверить существование файла 
+	/**
+	 * Проверить существование файла 
 	 * @param dir наименование директории
 	 * @param photo наименование фотографии
 	 * @param getCheckSumm запросить контрольную сумму
@@ -304,4 +362,27 @@ export class WorkerServer {
 export type BadDirsReport = {
 	dir: string,
 	files: string[]
+}
+
+export type ActiveTask = {
+	taskId: string;
+	dir: string;
+}
+
+export type SearchFaceTask = {
+	id: string;
+
+	//Наименования папок, проверку которых ещё необходимо осуществить
+	inQueue: string[];
+	
+	//Запущенные задачи
+	inProcess: ActiveTask[];
+
+	//Наименования папок, проверка которых уже завершена
+	completed: string[];
+
+	//Наименования папок, в которых было найдено совпадение лица
+	found: string[];
+
+	addFound(): void;
 }
