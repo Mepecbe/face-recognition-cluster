@@ -8,8 +8,11 @@ import * as CRC32 from "crc-32";
 /**Менеджер серверов */
 export class WorkersManager {
 	private servers: WorkerServer[];
+
 	/**Хранилище информации о серверах */
 	private storage: IServersInfoStorage;
+
+	/**Чекер серверов(проверяет соединение, количество задач) */
 	private readonly Checker: NodeJS.Timer;
 
 	/**Добавить сервер

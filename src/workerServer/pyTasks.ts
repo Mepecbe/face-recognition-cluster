@@ -62,6 +62,7 @@ export class WorkerTaskManager {
 	/**Загрузчик задач */
 	private taskLoader: NodeJS.Timer;
 
+	/**События окончания задачи */
 	public onTaskCompleted: Event<TaskResult> = new Event();
 
 	public photosManager: PhotosManager;
@@ -81,7 +82,11 @@ export class WorkerTaskManager {
 		}
 	}
 
-	/**Завершить задачу */
+	/**
+	 * Завершить задачу
+	 * @argument id Идентификатор задачи
+	 * @argument found Найдено ли лицо
+	 * */
 	public taskCompleted(
 		id: string,
 		found: boolean
@@ -102,11 +107,15 @@ export class WorkerTaskManager {
 		}
 	}
 
+	/**
+	 * Количество задач в пуле
+	 */
 	public getPendingCount(): number {
 		return this.pendingTaskPool.length + this.activeTaskPool.size;
 	}
 
-	/**Создать новую задачу по поиску лица 
+	/**
+	 * Запустить новую задачу по поиску лица 
 	 * @argument sourceFilePath путь к исходному файлу(например uploads/123.jpg)
 	 * @argument checkDirectoryPath путь к папке, в которой находятся проверяемые файлы(например /var/photos/qw3d3d3/)
 	*/
@@ -164,7 +173,7 @@ export class WorkerTaskManager {
 						});
 					} else {
 						const id = uuid.v4();
-						Logger.enterLog(`Create pending task ${id}, file ${filename}, dir ${checkDirectory}`, LogLevel.INFO);
+						Logger.enterLog(`Создание серверной задачи по поиску лица ${id}, файл ${filename}, директория ${checkDirectory}`, LogLevel.INFO);
 
 						this.pendingTaskPool.push({
 							id,
@@ -182,6 +191,9 @@ export class WorkerTaskManager {
 		});
 	}
 
+	/**
+	 * Загрузчик задач
+	 */
 	async loader(): Promise<void> {
 		if (this.pendingTaskPool.length == 0){
 			return;

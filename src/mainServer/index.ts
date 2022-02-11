@@ -29,10 +29,8 @@ async function main(): Promise<void> {
 		}
 	);
 
-	const mainWorkerServer = new MainWorkerServer(workersManager);
-
 	const distrib = new Distributor(
-		mainWorkerServer,
+		workersManager,
 		{
 			loadDb: process.argv.includes("--loadDb"),
 			loadDirs: process.argv.includes("--loadDirs"),
@@ -41,6 +39,11 @@ async function main(): Promise<void> {
 		}
 	);
 	
+	const mainWorkerServer = new MainWorkerServer(
+		workersManager,
+		distrib,
+		process.env.DEFAULT_TEMPORARY_IMAGES_DIR || "temporaryFiles"
+	);
 
 	const server = new ApiServer(
 		mainWorkerServer,

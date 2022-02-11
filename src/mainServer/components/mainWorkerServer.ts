@@ -8,6 +8,7 @@ import request = require("request");
 import * as fs from "fs";
 import { WorkersManager } from "./workersManagement/workersManager";
 import * as uuid from "uuid";
+import { Distributor } from "./filesDistribution/fileDistributor";
 
 
 /**Главный сервер, служит для связи и общения с другими серверами, которые занимаются поиском лица */
@@ -17,8 +18,16 @@ export class MainWorkerServer{
 	//Менеджер серверов
 	public workerManager: WorkersManager;
 
-	//Пул задач
+	public distributor: Distributor;
+
+	//Пул задач сети
 	public tasksPool: SearchFaceTask[] = [];
+
+	/**Управляет загрузкой серверов задачами */
+	private poolManager: NodeJS.Timer;
+
+	//Папка с фотографиями для задач
+	readonly imagesDir: string;
 
 	private getTaskById(id: string): SearchFaceTask | null {
 		for (const t of this.tasksPool){
@@ -30,37 +39,70 @@ export class MainWorkerServer{
 		return null;
 	}
 
-	/**Создать задачу по поиску лица на сервере
-	 * @param fileId Идентификатор ранее загруженного на сервер файла
-	 * @param server Сервер, который будет осуществлять поиск
-	 * @param dirname Наименование папки, в которой будет осуществлятся поиск
-	 * @returns Идентификатор созданной задачи
+	/**
+	 * Добавить задачу в пул
+	 * @param photo Файл фотографии
+	 * @param priority Приоритет задачи
+	 * @returns Если успешно - идентификатор новой задачи
 	 */
-	public async createTask(fileId: string, server: WorkerServer, dirname: string): Promise<RgResult<string>>{
-		const result = await server.checkConnection();
-		if (result.is_success){
-			const result = await server.client.request({
-				path: `/createTask?fileid=${fileId}&directory=${dirname}`,
-				method: "GET"
-			}, null)
+	public async addTaskToPool(photo: string, priority = 0): Promise<RgResult<string>> {
+		return new Promise((resolve, reject) => {
+			fs.exists(this.imagesDir, async (result) => {
+				if (!result){
+					resolve({
+						is_success: false,
+						error: {
+							code: 1,
+							message: `File ${photo} not found`
+						}
+					});
+				}
 
-			if (result.is_success){
-				return {
-					is_success: true,
-					data: result.data
+				const newTask: SearchFaceTask = {
+					id: uuid.v4(),
+					sourcePhoto: photo,
+					uploadedPhotosId: new Map(),
+					priority,
+					inQueue: this.distributor.getAllDistributedDirs(),
+					completed: [],
+					inProcess: [],
+					found: []
+				};
+
+				const servers = this.workerManager.getServers();
+
+				if (servers.length == 0){
+					resolve({
+						is_success: false,
+						error: {
+							code: 2,
+							message: `Service list is empty`
+						}
+					});
+				} else {
+					for (const server of servers){
+						const uploadResult = await server.getImageId(this.imagesDir + photo);
+						Logger.enterLog(`[addTaskToPoll] Загрузка фотографии ${photo} на сервер ${server.url}:${server.port}`, LogLevel.INFO);
+	
+						if (uploadResult.is_success){
+							Logger.enterLog(`       Успех`, LogLevel.INFO);
+							newTask.uploadedPhotosId.set(server.id, uploadResult.data);
+						} else {
+							Logger.enterLog(`       Ошибка! ${uploadResult.error.message}`, LogLevel.WARN);
+						}
+					}
+	
+					this.tasksPool.push(newTask);
+	
+					Logger.enterLog(`Создана новая задача ${newTask.id}, приоритет ${priority}, всего в пуле задач ${this.tasksPool.length}`, LogLevel.INFO);
+	
+					resolve({
+						is_success: true,
+						data: newTask.id
+					});
 				}
-			} else {
-				return result;
-			}
-		} else {
-			return {
-				is_success: false,
-				error: {
-					code: 1,
-					message: `Check connection error`
-				}
-			}
-		}
+			})
+		})
 	}
 
 
@@ -75,16 +117,86 @@ export class MainWorkerServer{
 
 
 	constructor(
-		workersManager: WorkersManager
+		workersManager: WorkersManager,
+		distrib: Distributor,
+		imagesDir: string
 	){
 		this.Server = ExpressFramework();
 		this.Server.use(BodyParser.json());
 		//this.Server.use(BodyParser.urlencoded());
 
 		this.workerManager = workersManager;
+		this.distributor = distrib;
+		this.imagesDir = imagesDir;
+
+		this.poolManager = setInterval(async () => {
+			if (this.tasksPool.length == 0){
+				return;
+			}
+
+			const servers = this.workerManager.getServers();
+
+			for (const task of this.tasksPool){
+				if (task.inQueue.length > 0){
+					Logger.enterLog(`  [poolManager] Обработка задачи ${task.id}`, LogLevel.INFO);
+
+					const dir = task.inQueue.pop();
+
+					if (dir){
+						const searchResult = this.distributor.getDirLocation(dir);
+
+						if (searchResult.is_success){
+							const server = this.workerManager.getServer(searchResult.data);
+
+							if (server.is_success){
+								const serverPhotoId = task.uploadedPhotosId.get(server.data.id);
+
+								if (serverPhotoId){
+									Logger.enterLog(`    Создание задачи на сервере ${server.data.id}`, LogLevel.INFO);
+									const createTaskResult = await server.data.createServerTask(serverPhotoId, dir);
+
+									if (createTaskResult.is_success){
+										Logger.enterLog(`      Задача создана, идентификатор ${createTaskResult.data}`, LogLevel.INFO);
+
+										task.inProcess.push({
+											taskId: createTaskResult.data,
+											dir
+										});
+									} else {
+										Logger.enterLog(`      Ошибка создания задачи -> ${createTaskResult.error.message}`, LogLevel.WARN);
+									}
+								} else {
+									Logger.enterLog(`    Фотография задачи не была выгружена на сервер ${server.data.id}`, LogLevel.WARN);
+								}
+							} else {
+								Logger.enterLog(`    Сервер, на котором расположена директория ${dir} не найден`, LogLevel.WARN);
+							}
+						} else {
+							Logger.enterLog(`    Директория ${dir} для задачи не найдена`, LogLevel.WARN);
+							task.inQueue.unshift(dir);
+						}
+					}
+				} else {
+					//Нет папок для проверки
+				}
+			}
+
+			for (const server of servers){
+				const dirs = await server.getDirs();
+
+				if (dirs.is_success){
+					
+				}
+			}
+		}, 100);
 
 		//Connection checker
 		this.Server.get(`/`, async (req, res) =>{
+			res.statusCode = 200;
+			res.end();
+		});
+
+		this.Server.post(`/`, async (req, res) => {
 			res.statusCode = 200;
 			res.end();
 		});
@@ -108,7 +220,6 @@ export class MainWorkerServer{
 					res.write(`param found is undefined`);
 					res.statusCode = 400; res.end();
 				} else {
-	
 					if (req.query["found"] == "1"){
 						if (typeof(req.query["faceId"]) !== "string"){
 							res.write(`param faceId is undefined`);
@@ -165,12 +276,6 @@ export class MainWorkerServer{
 
 			Logger.enterLog(`Added new server, ${DESTINATION_SERVER_URL}:${DESTINATION_SERVER_PORT}, CPUs ${DESTINATION_SERVER_CPU_COUNT}, dirs ${DESTINATION_SERVER_DIRS_COUNT}`, LogLevel.INFO);
 
-			res.statusCode = 200;
-			res.end();
-		});
-
-		this.Server.post(`/`, async (req, res) => {
-			const jsonData: unknown | null = req.body;
 			res.statusCode = 200;
 			res.end();
 		});

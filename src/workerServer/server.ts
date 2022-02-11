@@ -68,10 +68,22 @@ export class FaceRecognitionServer {
 		}
 	}
 
-	/**Событие окончания задачи */
+	/**
+	 * Событие окончания задачи 
+	 * */
 	public async taskCompleted(result: TaskResult): Promise<void> {
 		Logger.enterLog(
-			`Задача ${result.id} окончена, ${result.found ? `лицо найдено(папка ${result.foundFaceDir})` : "лицо не найдено"}`, LogLevel.INFO)
+			`Задача ${result.id} окончена, ${result.found ? `лицо найдено(папка ${result.foundFaceDir})` : "лицо не найдено"}`, 
+			LogLevel.INFO
+		);
+
+		request.get(
+			`http://${this.ROOT_SERVER}:${this.ROOT_SERVER_PORT}/taskResult?taskId=${result.id}&found=${result.found ? `1&faceId=${result.foundFaceDir}` : "0"}`,
+			undefined,
+			(err, response, body) => {
+				//pass
+			}
+		)
 	}
 
 	constructor(
@@ -160,7 +172,7 @@ export class FaceRecognitionServer {
 				return;
 			}
 			
-			Logger.enterLog(`[/fileUpload] Принят файл ${(filedata.size / 1024).toFixed(2)} КБайт`, LogLevel.WARN);
+			Logger.enterLog(`[/uploadCheckFile] Для задачи принят файл ${(filedata.size / 1024).toFixed(2)} КБайт`, LogLevel.WARN);
 
 			//Возвращаем оригинальный формат файла
 			fs.rename(
@@ -229,7 +241,7 @@ export class FaceRecognitionServer {
 			
 			const fullPath = process.env.PHOTOS_DIRECTORY + req.query["dir"] + "/";
 
-			Logger.enterLog(`[/addFile] Received file ${(filedata.size / 1024).toFixed(2)} Kb -> ${filedata.originalname}`, LogLevel.WARN);
+			Logger.enterLog(`Для базы загружено фото размером ${(filedata.size / 1024).toFixed(2)} КБ`, LogLevel.INFO);
 
 			if (!fs.existsSync(fullPath)){
 				fs.mkdirSync(fullPath);

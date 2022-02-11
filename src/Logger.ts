@@ -52,12 +52,13 @@ export class Logger {
 	}
 
 	public static init(): void {
-		console.error = (msg: any) => {
-			if (msg == null || typeof(msg) == undefined){
+		console.error = (msg: any, ...args: any[]) => {
+			if (msg == null || msg == "null" || msg == "Error: null" || typeof(msg) == undefined){
 				return;
 			}
 
-			this.enterLog(`Возникла непредвиденная ошибка ${msg}`, LogLevel.ERROR);
+			this.enterLog(`Возникла непредвиденная ошибка`, LogLevel.ERROR);
+			console.log(msg, args);
 		}
 	}
 }

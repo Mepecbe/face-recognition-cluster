@@ -53,7 +53,7 @@ export class WorkerServer {
 
 		if (result.is_success){
 			const fileId = await new Promise<string>((resolve, reject) => {request.post(
-				`http://${this.url}:${this.port}/fileUpload`,
+				`http://${this.url}:${this.port}/uploadCheckFile`,
 				{
 					port: 9032,
 					formData: {
@@ -94,7 +94,7 @@ export class WorkerServer {
 		const result = await this.checkConnection();
 
 		if (result.is_success){
-			await new Promise<string>((resolve, reject) => {
+			await new Promise<RgResult<string>>((resolve, reject) => {
 				request.post(
 					`http://${this.url}:${this.port}/addFile?dir=${dirname}`,
 					{
@@ -104,9 +104,18 @@ export class WorkerServer {
 					},
 					(err, response, body) => {
 						if (err){
-							reject(err);
-						} else if (response){
-							resolve(response.body);
+							resolve({
+								is_success: false,
+								error: {
+									code: 1,
+									message: err
+								}
+							});
+						} else {
+							resolve({
+								is_success: true,
+								data: body
+							});
 						}
 					}
 				)}
@@ -116,6 +125,56 @@ export class WorkerServer {
 				is_success: true,
 				data: null
 			};
+		} else {
+			return {
+				is_success: false,
+				error: {
+					code: 1,
+					message: `Check connection error`
+				}
+			}
+		}
+	}
+	
+	/**
+	 * Создать на сервере задачу по поиску лица
+	 * */
+	 public async createServerTask(
+		imageId: string,
+		checkDirName: string
+	): Promise<RgResult<string>>{
+		const result = await this.checkConnection();
+
+		if (result.is_success){
+			const serverCreateTaskResult = await new Promise<RgResult<string>>((resolve, reject) => {
+				request.get(
+					`http://${this.url}:${this.port}/createTask?fileid=${imageId}&directory=${checkDirName}`,
+					undefined,
+					(err, response, body) => {
+						if (err){
+							resolve({
+								is_success: false,
+								error: {
+									code: 1,
+									message: err
+								}
+							});
+						} else if (response){
+							resolve(response.body);
+						}
+					}
+				)}
+			);
+
+			if (serverCreateTaskResult.is_success){
+				return {
+					is_success: true,
+					data: serverCreateTaskResult.data
+				};
+			} else {
+				return serverCreateTaskResult;
+			}
+
 		} else {
 			return {
 				is_success: false,
@@ -369,8 +428,20 @@ export type ActiveTask = {
 	dir: string;
 }
 
+/**
+ * Задача по поиску лица в сети
+ */
 export type SearchFaceTask = {
 	id: string;
+
+	//Исходная фотография
+	sourcePhoto: string;
+
+	//Сервер - идентификатор фото на этом сервере
+	uploadedPhotosId: Map<string, string>;
+
+	//Приоритет, чем меньше - тем быстрее будет обработана
+	priority: number;
 
 	//Наименования папок, проверку которых ещё необходимо осуществить
 	inQueue: string[];
@@ -383,6 +454,4 @@ export type SearchFaceTask = {
 
 	//Наименования папок, в которых было найдено совпадение лица
 	found: string[];
-
-	addFound(): void;
 }

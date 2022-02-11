@@ -7,11 +7,14 @@ import { RgResult, timeout } from "rg";
 import * as progress from "cli-progress";
 import * as ansiColors from "ansi-colors";
 import * as CRC32 from "crc-32";
+import { WorkersManager } from "../workersManagement/workersManager";
 
 /**Основная задача - распределение файлов и папок между серверами */
 export class Distributor{
 	private readonly PHOTOS_DIRECTORY: string;
-	private server: MainWorkerServer;
+	private workersManager: WorkersManager;
+
+	/**Оффлайн хранилище */
 	private storage: FileInfoStorage;
 
 	//Идентификатор сервера - папки загруженные на него
@@ -63,7 +66,7 @@ export class Distributor{
 
 	/**Обновить список серверов */
 	updateServersList(): number {
-		const servers = this.server.workerManager.getServers();
+		const servers = this.workersManager.getServers();
 
 		for (const s of servers){
 			if (!this.filesDb.has(s.id)){
@@ -207,6 +210,20 @@ export class Distributor{
 		return result;
 	}
 
+	/**
+	 * Получить список всех распределенных директорий
+	 * @returns Массив директорий
+	 */
+	getAllDistributedDirs(): string[] {
+		let result: string[] = [];
+
+		for (const srv of this.filesDb){
+			result = result.concat(result, srv[1]);
+		}
+
+		return result;
+	}
+
 	/**Проверить целостность сети
 	 * @argument fixServerErrors исправлять ли ошибки целостности
 	 * @argument fullCheck проверять ли файлы (если false - будет проверено только наличие папок)
@@ -221,8 +238,8 @@ export class Distributor{
 
 		let barServerDirs: Map<string, BadDirsReport[]> = new Map();
 
-		for (const server of this.filesDb){
-			const serverInfo = this.server.workerManager.getServer(server[0]);
+		for (const workersManager of this.filesDb){
+			const serverInfo = this.workersManager.getServer(workersManager[0]);
 
 			if (serverInfo.is_success){
 				const checkConnectionResult = await serverInfo.data.checkConnection();
@@ -240,7 +257,7 @@ export class Distributor{
 					hideCursor: true
 				});
 
-				bar.start(server[1].length, 0);
+				bar.start(workersManager[1].length, 0);
 
 				bar.increment(0, {
 					currFileNumber: 0,
@@ -251,7 +268,7 @@ export class Distributor{
 				//dir - [badPhoto1, badPhoto2], если опция fullCheck активна
 				const badDirs: BadDirsReport[] = [];
 
-				for (const dir of server[1]){
+				for (const dir of workersManager[1]){
 					//Проверка директории удаленного сервера
 
 					const result = await serverInfo.data.dirExists(dir);
@@ -327,7 +344,7 @@ export class Distributor{
 					barServerDirs.set(serverInfo.data.id, badDirs);
 				}
 			} else {
-				Logger.enterLog(`[checkNetworkIntegrity] Сервер ${server[0]} не найден`, LogLevel.WARN);
+				Logger.enterLog(`[checkNetworkIntegrity] Сервер ${workersManager[0]} не найден`, LogLevel.WARN);
 			}
 		}
 
@@ -344,7 +361,7 @@ export class Distributor{
 				let notFoundDirs: string[] = [];
 
 				for (const info of barServerDirs){
-					const serverInfo = this.server.workerManager.getServer(info[0]);
+					const serverInfo = this.workersManager.getServer(info[0]);
 
 					if (serverInfo.is_success){
 						const checkConnectResult = await serverInfo.data.checkConnection();
@@ -446,7 +463,7 @@ export class Distributor{
 		let totalUploadedDirs = 0;
 
 		for (const serverFiles of this.filesDb){
-			const serverInfo = this.server.workerManager.getServer(serverFiles[0]);
+			const serverInfo = this.workersManager.getServer(serverFiles[0]);
 
 			if (serverInfo.is_success){
 				const checkConnection = await serverInfo.data.checkConnection();
@@ -547,7 +564,7 @@ export class Distributor{
 	/**Автоматическое перераспределение */
 	async runReDistribution(): Promise<void> {
 		for (const srv of this.filesDb){
-			const serverInfo = this.server.workerManager.getServer(srv[0]);
+			const serverInfo = this.workersManager.getServer(srv[0]);
 
 			if (serverInfo.is_success){
 				if ((await serverInfo.data.checkConnection()).is_success){
@@ -602,13 +619,13 @@ export class Distributor{
 
 	/**
 	 * 
-	 * @param server Главный управляющий сервер
+	 * @param workersManager Главный управляющий сервер
 	 * @param loadDb Загружать ли базу с информацией распределения на серверах
 	 * @param loadDirs Загружать ли список директорий в список не распределённых
 	 * @param checkDistribution Проверять распределение информации на серверах(не реальная проверка, сверка с данными из базы), крайне рекомендуется при каждой загрузке папок
 	 */
 	constructor(
-		server: MainWorkerServer,
+		workersManager: WorkersManager,
 		settings: {
 			loadDb: boolean,
 			loadDirs: boolean,
@@ -616,7 +633,7 @@ export class Distributor{
 			updateServersList: boolean
 		}
 	) {
-		this.server = server;
+		this.workersManager = workersManager;
 		this.storage = new FileStorage(process.env.DISTRIBUTOR_DB_FILE || "distrib.db");
 		this.PHOTOS_DIRECTORY = process.env.PHOTOS_DIRECTORY || "images/";
 
