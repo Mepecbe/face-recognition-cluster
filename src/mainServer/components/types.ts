@@ -4,6 +4,7 @@ import { Logger, LogLevel } from "../../Logger";
 import * as request from "request";
 import { RgWeb } from "rg-web";
 import * as fs from "fs";
+import { CreateTaskError } from "./enums";
 
 export class WorkerServer {
 	public readonly id: string;
@@ -436,16 +437,17 @@ export type BadDirsReport = {
 	files: string[]
 }
 
+/**Запущенный в сети таск */
 export type ActiveTask = {
 	taskId: string;
 	dir: string;
 }
 
+/**Информация об ошибке запуска проверки директории */
 export type ErrorStartCheckDir = {
 	dir: string;
-	code: number;
+	code: CreateTaskError;
 }
-
 
 /**
  * Задача по поиску лица в сети
@@ -465,13 +467,13 @@ export type SearchFaceTask = {
 	//Приоритет, чем меньше - тем быстрее будет обработана
 	priority: number;
 
-	//Наименования папок, проверку которых ещё необходимо осуществить
+	//**Задачи, которые ещё необходимо запстить */
 	inQueue: string[];
 	
-	//Запущенные задачи
+	/**Запущенные на серверах задачи проверки папок */
 	inProcess: ActiveTask[];
 	
-	//Ошибка запуска задачи
+	/**Задачи, которые не были запущены по причине ошибки запуска */
 	errorStart: ErrorStartCheckDir[];
 
 	//Наименования папок, проверка которых уже завершена

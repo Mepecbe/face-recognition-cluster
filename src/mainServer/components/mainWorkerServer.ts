@@ -11,6 +11,7 @@ import * as uuid from "uuid";
 import { Distributor } from "./filesDistribution/fileDistributor";
 import * as progress from "cli-progress";
 import * as ansiColors from "ansi-colors";
+import { CreateTaskError } from "./enums";
 
 
 /**Главный сервер, служит для связи и общения с другими серверами, которые занимаются поиском лица */
@@ -137,8 +138,6 @@ export class MainWorkerServer{
 				return;
 			}
 
-			const servers = this.workerManager.getServers();
-
 			for (const task of this.tasksPool){
 				if (task.mutex){
 					continue;
@@ -148,11 +147,10 @@ export class MainWorkerServer{
 
 				if (task.inQueue.length > 0){
 					Logger.enterLog(`  [poolManager] Обработка задачи ${task.id}`, LogLevel.INFO);
-
 					Logger.blockMessages(true);
 
 					const bar = new progress.SingleBar({
-						format: 'Загрузка задач на удалённые сервера |' + ansiColors.cyan('{bar}') + `| {percentage}% || ${ansiColors.green('{value}')}/${ansiColors.red('{errors}')}/{total} `,
+						format: `Загрузка задач на удалённые сервера | ${ansiColors.cyan('{bar}')} | {percentage}% || ${ansiColors.green('{value}')}/${ansiColors.red('{errors}')}/{total} `,
 						barCompleteChar: '\u2588',
 						barIncompleteChar: '\u2591',
 						hideCursor: true
@@ -191,31 +189,31 @@ export class MainWorkerServer{
 												dir
 											});
 										} else {
-											//Ошибка создания задачи
+											//Серверная ошибка создания задачи
 											task.errorStart.push({
 												dir,
-												code: 5
+												code: CreateTaskError.SERVER_CREATE_TASK_ERROR
 											});
 										}
 									} else {
 										//При создании задачи фотография почему то либо не была выгружена на удаленный сервер, либо была повреждена на удаленном сервере
 										task.errorStart.push({
 											dir,
-											code: 4
+											code: CreateTaskError.IMAGE_NOT_UPLOADED
 										});
 									}
 								} else {
 									//Сервер не активен
 									task.errorStart.push({
 										dir,
-										code: 3
+										code: CreateTaskError.SERVER_OFFLINE
 									});
 								}
 							} else {
 								//Директория в сети серверов не была найдена, рекомендуется провести проверку целостности
 								task.errorStart.push({
 									dir,
-									code: 2
+									code: CreateTaskError.NETWORK_DIRECTORY_NOT_FOUND
 								});
 							}
 						} else {
@@ -232,14 +230,6 @@ export class MainWorkerServer{
 				}
 
 				task.mutex = false;
-			}
-
-			for (const server of servers){
-				const dirs = await server.getDirs();
-
-				if (dirs.is_success){
-					
-				}
 			}
 		}, 100);
 
