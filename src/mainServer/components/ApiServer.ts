@@ -133,7 +133,14 @@ class ApiServer{
 		});
 
 		this.server.get('/distribution/updateServerList', async (req, res) => {
-			res.write(this.distributor.updateServersList().toString());
+			res.write(
+				(await this.distributor.updateServersList(req.query["active"] == "1")).toString()
+				);
+			res.statusCode = 200; res.end();
+		})
+
+		this.server.get('/distribution/clearDistributionInfo', async (req, res) => {
+			this.distributor.clearInfo();
 			res.statusCode = 200; res.end();
 		})
 
@@ -158,6 +165,7 @@ class ApiServer{
 
 		this.server.get('/serversList', async (req, res) => {
 			const servers = this.mainWorkerServer.workerManager.getServers();
+
 			const data: any[] = [];
 
 			for (const server of servers){

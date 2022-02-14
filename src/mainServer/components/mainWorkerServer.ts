@@ -9,6 +9,8 @@ import * as fs from "fs";
 import { WorkersManager } from "./workersManagement/workersManager";
 import * as uuid from "uuid";
 import { Distributor } from "./filesDistribution/fileDistributor";
+import * as progress from "cli-progress";
+import * as ansiColors from "ansi-colors";
 
 
 /**Главный сервер, служит для связи и общения с другими серверами, которые занимаются поиском лица */
@@ -60,12 +62,14 @@ export class MainWorkerServer{
 
 				const newTask: SearchFaceTask = {
 					id: uuid.v4(),
+					mutex: false,
 					sourcePhoto: photo,
 					uploadedPhotosId: new Map(),
 					priority,
 					inQueue: this.distributor.getAllDistributedDirs(),
 					completed: [],
 					inProcess: [],
+					errorStart: [],
 					found: []
 				};
 
@@ -82,13 +86,12 @@ export class MainWorkerServer{
 				} else {
 					for (const server of servers){
 						const uploadResult = await server.getImageId(this.imagesDir + photo);
-						Logger.enterLog(`[addTaskToPoll] Загрузка фотографии ${photo} на сервер ${server.url}:${server.port}`, LogLevel.INFO);
 	
 						if (uploadResult.is_success){
-							Logger.enterLog(`       Успех`, LogLevel.INFO);
+							Logger.enterLog(`[addTaskToPoll] Загружена фотография ${photo} на сервер ${server.url}:${server.port}`, LogLevel.INFO);
 							newTask.uploadedPhotosId.set(server.id, uploadResult.data);
 						} else {
-							Logger.enterLog(`       Ошибка! ${uploadResult.error.message}`, LogLevel.WARN);
+							Logger.enterLog(`[addTaskToPoll] Ошибка загрузки фотографии ${photo} на сервер ${server.url}:${server.port}`, LogLevel.ERROR);
 						}
 					}
 	
@@ -137,48 +140,98 @@ export class MainWorkerServer{
 			const servers = this.workerManager.getServers();
 
 			for (const task of this.tasksPool){
+				if (task.mutex){
+					continue;
+				}
+
+				task.mutex = true;
+
 				if (task.inQueue.length > 0){
 					Logger.enterLog(`  [poolManager] Обработка задачи ${task.id}`, LogLevel.INFO);
 
-					const dir = task.inQueue.pop();
+					Logger.blockMessages(true);
 
-					if (dir){
-						const searchResult = this.distributor.getDirLocation(dir);
+					const bar = new progress.SingleBar({
+						format: 'Загрузка задач на удалённые сервера |' + ansiColors.cyan('{bar}') + `| {percentage}% || ${ansiColors.green('{value}')}/${ansiColors.red('{errors}')}/{total} `,
+						barCompleteChar: '\u2588',
+						barIncompleteChar: '\u2591',
+						hideCursor: true
+					});
 
-						if (searchResult.is_success){
-							const server = this.workerManager.getServer(searchResult.data);
+					bar.start(task.inQueue.length, 0, {
+						errors: task.errorStart.length
+					});
 
-							if (server.is_success){
-								const serverPhotoId = task.uploadedPhotosId.get(server.data.id);
+					while (task.inQueue.length > 0){
+						const dir = task.inQueue.pop();
 
-								if (serverPhotoId){
-									Logger.enterLog(`    Создание задачи на сервере ${server.data.id}`, LogLevel.INFO);
-									const createTaskResult = await server.data.createServerTask(serverPhotoId, dir);
+						if (dir){
+							//Поиск директории в сети серверов
+							const searchResult = this.distributor.getDirLocation(dir);
 
-									if (createTaskResult.is_success){
-										Logger.enterLog(`      Задача создана, идентификатор ${createTaskResult.data}`, LogLevel.INFO);
+							if (searchResult.is_success){
+								//Если директория успешно найдена
+								const server = this.workerManager.getServer(searchResult.data);
 
-										task.inProcess.push({
-											taskId: createTaskResult.data,
-											dir
-										});
+								if (server.is_success){
+									const serverPhotoId = task.uploadedPhotosId.get(server.data.id);
+
+									if (serverPhotoId){
+										//Создание задачи на удаленном сервере
+										const createTaskResult = await server.data.createServerTask(serverPhotoId, dir);
+
+										if (createTaskResult.is_success){
+											//Задача создана, идентификатор createTaskResult.data
+											bar.increment(1, {
+												errors: task.errorStart.length
+											});
+
+											task.inProcess.push({
+												taskId: createTaskResult.data,
+												dir
+											});
+										} else {
+											//Ошибка создания задачи
+											task.errorStart.push({
+												dir,
+												code: 5
+											});
+										}
 									} else {
-										Logger.enterLog(`      Ошибка создания задачи -> ${createTaskResult.error.message}`, LogLevel.WARN);
+										//При создании задачи фотография почему то либо не была выгружена на удаленный сервер, либо была повреждена на удаленном сервере
+										task.errorStart.push({
+											dir,
+											code: 4
+										});
 									}
 								} else {
-									Logger.enterLog(`    Фотография задачи не была выгружена на сервер ${server.data.id}`, LogLevel.WARN);
+									//Сервер не активен
+									task.errorStart.push({
+										dir,
+										code: 3
+									});
 								}
 							} else {
-								Logger.enterLog(`    Сервер, на котором расположена директория ${dir} не найден`, LogLevel.WARN);
+								//Директория в сети серверов не была найдена, рекомендуется провести проверку целостности
+								task.errorStart.push({
+									dir,
+									code: 2
+								});
 							}
 						} else {
-							Logger.enterLog(`    Директория ${dir} для задачи не найдена`, LogLevel.WARN);
-							task.inQueue.unshift(dir);
+							//Нет папок для проверки
 						}
+
+						bar.increment(0, {
+							errors: task.errorStart.length
+						});
 					}
-				} else {
-					//Нет папок для проверки
+
+					bar.stop();
+					Logger.blockMessages(false);
 				}
+
+				task.mutex = false;
 			}
 
 			for (const server of servers){

@@ -58,7 +58,7 @@ export class WorkersManager {
 	}
 
 	/**
-	 * Сохранить информацию о серверах в файл 
+	 * Сохранить информацию о серверах в файл
 	 * */
 	saveToStorage(): void {
 		this.storage.saveAll(
@@ -104,7 +104,7 @@ export class WorkersManager {
 	}
 
 	/**
-	 * Проверить, есть ли сервер с такимими ДАННЫМИ 
+	 * Проверить, есть ли сервер с такимими ДАННЫМИ
 	 * */
 	existsServer(url: string, port: number, cpuCount: number): boolean {
 		return this.servers.map(

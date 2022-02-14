@@ -159,8 +159,21 @@ export class WorkerServer {
 									message: err
 								}
 							});
-						} else if (response){
-							resolve(response.body);
+						} else {
+							if (response.statusCode == 200){
+								resolve({
+									is_success: true,
+									data: body
+								});
+							} else {
+								resolve({
+									is_success: false,
+									error: {
+										code: response.statusCode,
+										message: body
+									}
+								});
+							}
 						}
 					}
 				)}
@@ -428,11 +441,20 @@ export type ActiveTask = {
 	dir: string;
 }
 
+export type ErrorStartCheckDir = {
+	dir: string;
+	code: number;
+}
+
+
 /**
  * Задача по поиску лица в сети
  */
 export type SearchFaceTask = {
 	id: string;
+
+	/**Блокировка */
+	mutex: boolean;
 
 	//Исходная фотография
 	sourcePhoto: string;
@@ -448,6 +470,9 @@ export type SearchFaceTask = {
 	
 	//Запущенные задачи
 	inProcess: ActiveTask[];
+	
+	//Ошибка запуска задачи
+	errorStart: ErrorStartCheckDir[];
 
 	//Наименования папок, проверка которых уже завершена
 	completed: string[];

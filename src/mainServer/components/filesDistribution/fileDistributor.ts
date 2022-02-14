@@ -64,17 +64,33 @@ export class Distributor{
 		return count;
 	}
 
-	/**Обновить список серверов */
-	updateServersList(): number {
+	/**
+	 * Обновить список серверов
+	 * @argument onlyActiveServers Если True, то загрузить только активные серверы(предварительная проверка соединения)
+	 * */
+	async updateServersList(onlyActiveServers: boolean): Promise<number> {
 		const servers = this.workersManager.getServers();
 
 		for (const s of servers){
+			if (onlyActiveServers){
+				const checkConnResult = await s.checkConnection();
+
+				if (!checkConnResult.is_success){
+					continue;
+				}
+			}
+
 			if (!this.filesDb.has(s.id)){
 				this.filesDb.set(s.id, []);
 			}
 		}
 
 		return this.filesDb.size;
+	}
+
+	clearInfo(): void {
+		this.filesDb.clear();
+		this.saveDb();
 	}
 
 	/**Загрузить список директорий находящихся на этом сервере и поместить список не распределенных */
@@ -582,7 +598,7 @@ export class Distributor{
 			this.filesDb.clear();
 
 			Logger.enterLog(`[runReDistribution] Обновление списка серверов для распределения`, LogLevel.INFO);
-			this.updateServersList();
+			await this.updateServersList(true);
 
 			Logger.enterLog(`[runReDistribution] Для распределения доступно серверов ${this.filesDb.size}`, LogLevel.INFO);
 		}
@@ -664,7 +680,7 @@ export class Distributor{
 		}
 
 		if (settings.updateServersList){
-			this.updateServersList();
+			this.updateServersList(true);
 		}
 	}
 }
