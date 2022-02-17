@@ -182,6 +182,7 @@ class ApiServer{
 			res.statusCode = 200; res.end();
 		});
 
+		/**=============================== ОСНОВНЫЕ КОМАНДЫ ========================================= */
 
 		this.server.post('/createTask', async (req, res) => {
 			const filedata = req.file;
@@ -220,6 +221,26 @@ class ApiServer{
 					}
 				}
 			);
+		});
+
+		this.server.get('/taskResult', async (req, res) => {
+			if (typeof(req.query["taskId"]) !== "string" || typeof(req.query["found"]) !== "string"){
+				res.write(`Bad param "taskId" or "found"`);
+				res.write(400); res.end();
+				return;
+			}
+
+			if (req.query["found"] == "1"){
+				if (typeof(req.query["faceId"]) != "string"){
+					res.write(`Bad param "taskId" or "found"`);
+					res.write(400); res.end();
+					return;
+				}
+			}
+
+			Logger.enterLog(`Задача ${req.query["taskId"]} завершена, результат ${req.query["found"]}`, LogLevel.WARN);
+
+			this.mainWorkerServer.taskUpdate(req.query["taskId"], req.query["found"] == "1", req.query["faceId"]?.toString());
 		});
 	}
 }

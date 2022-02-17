@@ -12,6 +12,7 @@ import * as os from "os";
 import { PhotosManager } from "./photosDbManager";
 import { Utils } from "./utils";
 import * as fs from "fs";
+import { CreateTaskErrors } from "../workerErrors";
 
 export enum TaskState {
 	WaitLoadSourceImage,
@@ -118,6 +119,7 @@ export class WorkerTaskManager {
 	 * Запустить новую задачу по поиску лица 
 	 * @argument sourceFilePath путь к исходному файлу(например uploads/123.jpg)
 	 * @argument checkDirectoryPath путь к папке, в которой находятся проверяемые файлы(например /var/photos/qw3d3d3/)
+	 * @argument taskid Какой идентификатор присвоить задаче (если не указать - будет сгенерирован автоматически)
 	*/
 	public runTask(
 		sourceFilePath: string,
@@ -142,7 +144,7 @@ export class WorkerTaskManager {
 			checkDirectory: checkDirectoryPath
 		});
 
-		Logger.enterLog(`Run task ${id}, active ${this.activeTaskPool.size}`, LogLevel.INFO);
+		Logger.enterLog(`Запуск задачи ${id}, активно задач ${this.activeTaskPool.size}`, LogLevel.INFO);
 	}
 
 	/**
@@ -158,7 +160,7 @@ export class WorkerTaskManager {
 					resolve({
 						is_success: false,
 						error: {
-							code: 1,
+							code: CreateTaskErrors.SERVER_CREATE_TASK_ERROR,
 							message: err.message
 						}
 					});
@@ -167,13 +169,13 @@ export class WorkerTaskManager {
 						resolve({
 							is_success: false,
 							error: {
-								code: 1,
+								code: CreateTaskErrors.DIRECTORY_EMPTY,
 								message: `Not files in directory`
 							}
 						});
 					} else {
 						const id = uuid.v4();
-						Logger.enterLog(`Создание серверной задачи по поиску лица ${id}, файл ${filename}, директория ${checkDirectory}`, LogLevel.INFO);
+						Logger.enterLog(`Добавление задачи в пул задач, идентификатор ${id}, файл ${filename}, директория ${checkDirectory}`, LogLevel.INFO);
 
 						this.pendingTaskPool.push({
 							id,
@@ -206,10 +208,10 @@ export class WorkerTaskManager {
 				const fullFile = Utils.getFullFilename(task.sourceFile.split("/")[1], "uploads/");
 
 				if (fullFile.found){
-					Logger.enterLog(`[Loader] Run task ${task.id}, source file ${fullFile.file}, directory ${task.checkDir}`, LogLevel.INFO);
-					this.runTask(`uploads/${fullFile.file}`, task.checkDir);
+					Logger.enterLog(`[Loader] Запуск задачи ${task.id}, исходный ${fullFile.file}, папка ${task.checkDir}`, LogLevel.INFO);
+					this.runTask(`uploads/${fullFile.file}`, task.checkDir, task.id);
 				} else {
-					Logger.enterLog(`[Loader] File not found`, LogLevel.ERROR);
+					Logger.enterLog(`[Loader] Файл не найден`, LogLevel.ERROR);
 				}
 			}
 		}

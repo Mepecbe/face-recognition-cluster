@@ -13,6 +13,7 @@
     "@types/request-stats": "^3.0.0",
     "@types/uuid": "^8.3.0",
     "ansi-colors": "^4.1.1",
+    "async-mutex": "^0.3.2",
     "cli-progress": "^3.10.0",
     "crc-32": "^1.2.1",
     "dotenv": "^14.3.2",

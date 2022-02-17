@@ -32,13 +32,13 @@ export class FaceRecognitionServer {
 			//Проверка доступности корневого сервера
 			try{
 				const result = await ping(this.ROOT_SERVER, this.ROOT_SERVER_PORT);
-				Logger.enterLog(`[FaceRecognitionServer.run] Server ping ${result}`, LogLevel.INFO);
+				Logger.enterLog(`[FaceRecognitionServer.run] Серверный пинг ${result}`, LogLevel.INFO);
 
 				if (this.prober !== undefined){
 					clearInterval(this.prober);
 				}
 			} catch(Ex: any) {
-				Logger.enterLog(`[FaceRecognitionServer.run] Check root server error(${this.ROOT_SERVER}:${this.ROOT_SERVER_PORT}), exit ` + Ex, LogLevel.ERROR);
+				Logger.enterLog(`[FaceRecognitionServer.run] Ошибка подключения к корневому серверу(${this.ROOT_SERVER}:${this.ROOT_SERVER_PORT}), exit ` + Ex, LogLevel.ERROR);
 
 				if (this.prober == undefined){
 					this.prober = setInterval(() => { this.run(port); }, 3000);
@@ -47,7 +47,7 @@ export class FaceRecognitionServer {
 			}
 		}
 
-		Logger.enterLog(`[FaceRecognitionServer.run] Run server on ${port} port`, LogLevel.INFO);
+		Logger.enterLog(`[FaceRecognitionServer.run] Запуск сервера на ${port} порту`, LogLevel.INFO);
 		this.Server.listen(port);
 
 		{
@@ -57,11 +57,11 @@ export class FaceRecognitionServer {
 				undefined,
 				(err, response, body) => {
 					if (response.statusCode == 200){
-						Logger.enterLog("Connected to ROOT SERVER, registration success", LogLevel.INFO);
+						Logger.enterLog("Подключён к корневому серверу(зарегистрирован как новый клиент)!", LogLevel.INFO);
 					} else if (response.statusCode == 201){
-						Logger.enterLog("Connected to ROOT SERVER (previously connected)", LogLevel.INFO);
+						Logger.enterLog("Подключен к корневому серверу (ранее уже был подключен)!", LogLevel.INFO);
 					} else if (response.statusCode == 400){
-						Logger.enterLog("Connected to ROOT SERVER FAILED", LogLevel.ERROR);
+						Logger.enterLog("Подключение к серверу не успешно!", LogLevel.ERROR);
 					}
 				}
 			)
@@ -81,7 +81,13 @@ export class FaceRecognitionServer {
 			`http://${this.ROOT_SERVER}:${this.ROOT_SERVER_PORT}/taskResult?taskId=${result.id}&found=${result.found ? `1&faceId=${result.foundFaceDir}` : "0"}`,
 			undefined,
 			(err, response, body) => {
-				//pass
+				if (err){
+					Logger.enterLog(err, LogLevel.ERROR);
+				} else {
+					if (response.statusCode != 200){
+						Logger.enterLog(`Ошибка отправки результата выполнения задачи ${body}`, LogLevel.ERROR);
+					}
+				}
 			}
 		)
 	}
@@ -116,12 +122,12 @@ export class FaceRecognitionServer {
 				case "error": {
 					switch (parseInt(req.query["code"]?.toString() || "-1")){
 						case PythonWorkerErrorCodes.FACE_NOT_FOUND: {
-							Logger.enterLog(`Task ${req.query["id"]}: warning, face not found ${req.query["file"]}`, LogLevel.WARN);
+							Logger.enterLog(`Задача ${req.query["id"]}: внимание, лицо на фотографии не найдено ${req.query["file"]}`, LogLevel.WARN);
 							break;
 						}
 
 						default: {
-							Logger.enterLog(`Unknown error code ${req.query["code"]}, query ${req.query}`, LogLevel.ERROR);
+							Logger.enterLog(`Задача ${req.query["id"]}: неизвестная ошибка с кодом ${req.query["code"]}, информация -> ${req.query}`, LogLevel.ERROR);
 						}
 					}
 					break;
@@ -208,11 +214,17 @@ export class FaceRecognitionServer {
 			);
 
 			if (createResult.is_success){
-				res.write(createResult.data);
-				res.statusCode = 200;
+				res.write(JSON.stringify({
+					code: 0,
+					message: createResult.data
+				}));
 			} else {
-				res.write(createResult.error.message);
-				res.statusCode = 400;
+				res.write(
+					JSON.stringify({
+						code: createResult.error.code,
+						message: createResult.error.message
+					})
+				);
 			}
 
 			res.end();

@@ -1,6 +1,6 @@
-echo "=== START BUILD ====="
+echo "==== START BUILD ======"
 
-echo "=== COMPILE FILES ==="
+echo "==== COMPILE FILES ===="
 tsc
 
 echo "+ COPYING .PY FILES"

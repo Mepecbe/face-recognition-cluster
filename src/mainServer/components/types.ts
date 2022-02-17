@@ -4,7 +4,8 @@ import { Logger, LogLevel } from "../../Logger";
 import * as request from "request";
 import { RgWeb } from "rg-web";
 import * as fs from "fs";
-import { CreateTaskError } from "./enums";
+import { Mutex } from "async-mutex";
+import { CreateTaskErrors } from "../../workerErrors";
 
 export class WorkerServer {
 	public readonly id: string;
@@ -147,48 +148,28 @@ export class WorkerServer {
 		const result = await this.checkConnection();
 
 		if (result.is_success){
-			const serverCreateTaskResult = await new Promise<RgResult<string>>((resolve, reject) => {
-				request.get(
-					`http://${this.url}:${this.port}/createTask?fileid=${imageId}&directory=${checkDirName}`,
-					undefined,
-					(err, response, body) => {
-						if (err){
-							resolve({
-								is_success: false,
-								error: {
-									code: 1,
-									message: err
-								}
-							});
-						} else {
-							if (response.statusCode == 200){
-								resolve({
-									is_success: true,
-									data: body
-								});
-							} else {
-								resolve({
-									is_success: false,
-									error: {
-										code: response.statusCode,
-										message: body
-									}
-								});
-							}
-						}
-					}
-				)}
-			);
+			const serverCreateTaskResult = await this.client.request({
+				path: encodeURI(`/createTask?fileid=${imageId}&directory=${checkDirName}`),
+				method: "GET"
+			}, null);
 
 			if (serverCreateTaskResult.is_success){
-				return {
-					is_success: true,
-					data: serverCreateTaskResult.data
-				};
+				const createResult = JSON.parse(serverCreateTaskResult.data) as { code: number, message: string };
+
+				if (createResult.code !== 0){
+					return {
+						is_success: false,
+						error: createResult
+					}
+				} else {
+					return {
+						is_success: true,
+						data: createResult.message
+					}
+				}
 			} else {
 				return serverCreateTaskResult;
 			}
-
 		} else {
 			return {
 				is_success: false,
@@ -446,7 +427,7 @@ export type ActiveTask = {
 /**Информация об ошибке запуска проверки директории */
 export type ErrorStartCheckDir = {
 	dir: string;
-	code: CreateTaskError;
+	code: CreateTaskErrors;
 }
 
 /**
@@ -456,7 +437,7 @@ export type SearchFaceTask = {
 	id: string;
 
 	/**Блокировка */
-	mutex: boolean;
+	mutex: Mutex;
 
 	//Исходная фотография
 	sourcePhoto: string;
