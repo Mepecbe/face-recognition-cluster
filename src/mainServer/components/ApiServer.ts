@@ -210,7 +210,7 @@ class ApiServer{
 						const createTaskResult = await this.mainWorkerServer.addTaskToPool(`${filedata.filename}.${filedata.originalname.split(".")[1]}`, 0);
 						
 						if (!createTaskResult.is_success){
-							Logger.enterLog(`Ошибка добавления задачи в пулл задач ${createTaskResult.error.message}`, LogLevel.ERROR);
+							Logger.enterLog(`Ошибка добавления задачи в пулл задач код ${createTaskResult.error.message}`, LogLevel.ERROR);
 							res.statusCode = 500;
 							res.write(createTaskResult.error.message);
 						} else {

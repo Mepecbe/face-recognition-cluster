@@ -10,3 +10,4 @@ ormconfig.json
 src/.vs/
 test-blessed
 src/testUI.ts
+prometheusConfig/.config.yml.swp

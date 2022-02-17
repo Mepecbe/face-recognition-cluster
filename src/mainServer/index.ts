@@ -6,6 +6,7 @@ import { Distributor } from "./components/filesDistribution/fileDistributor";
 import { WorkersManager } from "./components/workersManagement/workersManager";
 import { FileServersInfoStorage } from "./components/workersManagement/serverInfoStorage";
 import { Logger } from "../Logger";
+import { StatsManager } from "./components/statsCollector";
 
 async function main(): Promise<void> {
 	Logger.init();
@@ -50,9 +51,12 @@ async function main(): Promise<void> {
 		distrib,
 		process.env.DEFAULT_TEMPORARY_IMAGES_DIR || "temporaryFiles"
 	);
+
+	const statsManager = new StatsManager();
 	
 	mainWorkerServer.runServer(parseInt(process.env.MAIN_WORKER_SERVER_PORT || "9010"));
 	server.runServer(parseInt(process.env.API_SERVER_PORT || "9301"));
+	statsManager.runServer(parseInt(process.env.PROMETHEUS_SERVER_PORT || "9200"));
 }
 
 main();
