@@ -25,9 +25,12 @@ import { MainWorkerServer } from './mainWorkerServer';
 import { Distributor } from './filesDistribution/fileDistributor';
 import * as multer from "multer";
 import * as fs from "fs";
+import { StatsManager } from './statsCollector';
+
 
 /**API сервер для взаимодействия с подключаемыми внешними сервисами*/
 class ApiServer{
+	private readonly statsManager: StatsManager;
 	private readonly server: ExpressFramework.Express;
 	private readonly mainWorkerServer: MainWorkerServer;
 	private readonly distributor: Distributor;
@@ -43,14 +46,37 @@ class ApiServer{
 	}
 
 	constructor(
+		statsManager: StatsManager,
 		mainWorkerServer: MainWorkerServer,
 		distributor: Distributor,
 		temporaryFilesDir: string
 	){
+		this.statsManager = statsManager;
 		this.distributor = distributor;
 		this.mainWorkerServer = mainWorkerServer;
 		this.temporaryFilesDir = temporaryFilesDir;
 		this.server = ExpressFramework();
+
+		this.server.use((req, res, next) => {
+			//INCOMING TRAFFIC SIZE
+			this.statsManager.regRequest(req.path);
+			this.statsManager.regTraffic(req.socket.bytesRead, "incoming");
+
+			if (req.file){
+				this.statsManager.regTraffic(req.file.size, "incoming");
+			}
+
+
+			next();
+		});
+
+		this.server.use((req, res, next) => {
+			//OUTCOMING TRAFFIC SIZE
+			this.statsManager.regRequest(req.path);
+			this.statsManager.regTraffic(req.socket.bytesWritten, "outcoming");
+
+			next();
+		});
 		
 		this.server.use(multer( { dest: this.temporaryFilesDir } ).single("filedata"));
 		this.server.use(BodyParser.json());
@@ -62,8 +88,6 @@ class ApiServer{
 		this.server.post(`/`, async (req, res) => {
 			res.statusCode = 200; res.end();
 		});
-
-		
 
 		/**============================ РАСПРЕДЕЛЕНИЕ ============================= */
 
@@ -82,7 +106,7 @@ class ApiServer{
 
 			if (typeof(param) === "undefined"){
 				res.write("Param distributed:1or0 is undefined");
-				res.statusCode = 200; res.end();
+				res.statusCode = 400; res.end();
 				return;
 			}
 

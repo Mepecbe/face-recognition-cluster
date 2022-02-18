@@ -46,13 +46,15 @@ async function main(): Promise<void> {
 		process.env.DEFAULT_TEMPORARY_IMAGES_DIR || "temporaryFiles"
 	);
 
+	const statsManager = new StatsManager();
+
 	const server = new ApiServer(
+		statsManager,
 		mainWorkerServer,
 		distrib,
 		process.env.DEFAULT_TEMPORARY_IMAGES_DIR || "temporaryFiles"
 	);
 
-	const statsManager = new StatsManager();
 	
 	mainWorkerServer.runServer(parseInt(process.env.MAIN_WORKER_SERVER_PORT || "9010"));
 	server.runServer(parseInt(process.env.API_SERVER_PORT || "9301"));
