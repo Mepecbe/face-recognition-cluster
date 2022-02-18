@@ -35,6 +35,11 @@ export class StatsManager {
 		})
 	}
 
+	/**Добавляет или обнуляет метрику по счету количества запросов на путь веб сервера(не обязательно, regRequest это может сделать автоматом)*/
+	createPathMetrics(path: string): void {
+		this.requests.set(path, 0);
+	}
+
 	/**
 	 * Зарегистрировать трафик
 	 * @param size Размер в байтах
@@ -79,17 +84,17 @@ export class StatsManager {
 
 				for (const r of this.requests){
 					data += `main_api_server_requests {path="${r[0]}"} ${r[1]}\n`
+					this.requests.set(r[0], 0);
 				}
 
 				if (data.length == 0){
 					data += `main_api_server_requests {path="/"} 0\n`
 				}
 
-				this.requests.clear();
 				res.write(data);
 			});
 
-			//Данные о трафике
+			//Данные о размере трафика
 			await this.webTrafficSizeMutex.runExclusive(() => {
 				let data = `traffic {type="in"} ${this.incomingWebTraffic}\n`;
 				data += `traffic {type="out"} ${this.outcomingWebTraffic}\n`;
