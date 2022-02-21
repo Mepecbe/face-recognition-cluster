@@ -211,7 +211,7 @@ export class WorkerTaskManager {
 					Logger.enterLog(`[Loader] Запуск задачи ${task.id}, исходный ${fullFile.file}, папка ${task.checkDir}`, LogLevel.INFO);
 					this.runTask(`uploads/${fullFile.file}`, task.checkDir, task.id);
 				} else {
-					Logger.enterLog(`[Loader] Файл не найден`, LogLevel.ERROR);
+					Logger.enterLog(`[Loader] Файл ${task.sourceFile} не найден`, LogLevel.ERROR);
 				}
 			}
 		}

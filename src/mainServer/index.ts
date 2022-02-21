@@ -58,7 +58,10 @@ async function main(): Promise<void> {
 	
 	mainWorkerServer.runServer(parseInt(process.env.MAIN_WORKER_SERVER_PORT || "9010"));
 	server.runServer(parseInt(process.env.API_SERVER_PORT || "9301"));
-	statsManager.runServer(parseInt(process.env.PROMETHEUS_SERVER_PORT || "9200"));
+	statsManager.runServer(
+		mainWorkerServer,
+		parseInt(process.env.PROMETHEUS_SERVER_PORT || "9200")
+	);
 }
 
 main();

@@ -16,6 +16,8 @@ import { PythonWorkerErrorCodes } from "./enums";
 import * as ping from "node-http-ping";
 import 'dotenv/config';
 import * as os from "os";
+import { WorkerRequestError } from "../workerErrors";
+import * as osUtils from "os-utils";
 
 /**Сервер поиска лиц */
 export class FaceRecognitionServer {
@@ -101,10 +103,34 @@ export class FaceRecognitionServer {
 
 		this.ROOT_SERVER = process.env.ROOT_SERVER_URL || "127.0.0.1";
 		this.ROOT_SERVER_PORT = parseInt(process.env.ROOT_SERVER_PORT || "9010");
-		
+
 		this.Server.use(multer( { dest: "uploads" } ).single("filedata"));
 		this.Server.use(BodyParser.json());
 		//this.Server.use(BodyParser.urlencoded());
+
+		/**Информация об использовании оперативной памяти */
+		this.Server.get("/ramUsageInfo", async (req, res) => {
+			res.write(JSON.stringify({
+				total: os.totalmem(),
+				used: os.totalmem() - os.freemem()
+			}));
+
+			res.statusCode = 200; res.end();
+		});
+
+		/**Информация об использовании процессора */
+		this.Server.get("/cpuUsageInfo", async (req, res) => {
+			const cpuUsage = await new Promise<number>(
+				(resolve) => { 
+					osUtils.cpuUsage((usage) => {
+						resolve(usage);
+					})
+				}
+			);
+
+			res.write((cpuUsage * 100).toString());
+			res.statusCode = 200; res.end();
+		});
 
 		/**Обработчик результата от скриптов поиска */
 		this.Server.get(`/taskResult`, async (req, res) =>{
@@ -161,9 +187,10 @@ export class FaceRecognitionServer {
 		
 		/**Запрос списка директорий */
 		this.Server.get(`/getDirList`, async (req, res) => {
-			res.write(this.taskManager.photosManager.getAllDir().join(','));
-			res.statusCode = 200;
-			res.end();
+			res.write(JSON.stringify({
+				code: 0,
+				data: this.taskManager.photosManager.getAllDir().join(',')
+			}));
 		});
 
 		//ДЛЯ ПРИЁМА ФАЙЛОВ НА ПРОВЕРКУ
@@ -171,9 +198,11 @@ export class FaceRecognitionServer {
 			const filedata = req.file;
 
 			if (!filedata){
-				console.log(`[/uploadCheckFile] Неизвестный запрос, filedata не определена`);
-				res.write("filedata is undefined");
-				res.statusCode = 400;
+				res.write(JSON.stringify({
+					code: WorkerRequestError.FILEDATA_UNDEFINED,
+					data: "filedata is undefined"
+				}));
+
 				res.end();
 				return;
 			}
@@ -187,8 +216,10 @@ export class FaceRecognitionServer {
 				(err) => { console.error(err); }
 			);
 
-			res.send(filedata.filename); //Идентификатор файла, по которому можно запустить проверку
-			res.statusCode = 200;
+			res.send(JSON.stringify({
+				code: 0,
+				data: filedata.filename
+			}));
 			res.end();
 		});
 

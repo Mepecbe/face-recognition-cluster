@@ -5,7 +5,8 @@ import * as request from "request";
 import { RgWeb } from "rg-web";
 import * as fs from "fs";
 import { Mutex } from "async-mutex";
-import { CreateTaskErrors } from "../../workerErrors";
+import { CreateTaskErrors, WorkerRequestError } from "../../workerErrors";
+import { WorkerRequestResult } from "../../otherTypes";
 
 export class WorkerServer {
 	public readonly id: string;
@@ -45,6 +46,46 @@ export class WorkerServer {
 	}
 
 	/**
+	 * Получить информацию о загрузке процессора
+	 * @returns Значение от 0 до 100
+	 */
+	public async getCpuUsage(): Promise<RgResult<number>> {
+		const reqResult = await this.client.request({
+			method: "GET",
+			path: "/cpuUsageInfo"
+		}, null);
+
+		if (reqResult.is_success){
+			return {
+				is_success: true,
+				data: parseInt(reqResult.data)
+			}
+		}
+
+		return reqResult;
+	}
+	
+	/**
+	 * Получить информацию по использованию оперативной памяти сервером
+	 * @returns 
+	 */
+	public async getRamInfo(): Promise<RgResult<{ total: number; used: number; }>> {
+		const reqResult = await this.client.request({
+			method: "GET",
+			path: "/ramUsageInfo"
+		}, null);
+
+		if (reqResult.is_success){
+			return {
+				is_success: true,
+				data: JSON.parse(reqResult.data)
+			}
+		}
+
+		return reqResult;
+	}
+
+	/**
 	 * Загрузить фотографию на сервер и получить её айди для создания будущих задач по поиску лица
 	 * @param pathToFile Путь к загружаемой фотографии
 	 */
@@ -54,27 +95,56 @@ export class WorkerServer {
 		const result = await this.checkConnection();
 
 		if (result.is_success){
-			const fileId = await new Promise<string>((resolve, reject) => {request.post(
-				`http://${this.url}:${this.port}/uploadCheckFile`,
-				{
-					port: 9032,
-					formData: {
-						filedata: fs.createReadStream(pathToFile)
+			const uploadResult = await new Promise<RgResult<string>>((resolve, reject) => {
+				request.post(
+					`http://${this.url}:${this.port}/uploadCheckFile`,
+					{
+						formData: {
+							filedata: fs.createReadStream(pathToFile)
+						}
+					},
+					(err, response, body) => {
+						if (err){
+							resolve({
+								is_success: false,
+								error: {
+									code: WorkerRequestError.UNKNOWN_ERROR,
+									message: err
+								}
+							});
+						} else if (response){
+							if (response.statusCode == 200){
+								const reqResult: WorkerRequestResult = JSON.parse(response.body);
+						
+								if (reqResult.code == 0){
+									resolve({
+										is_success: true,
+										data: reqResult.data
+									});
+								} else {
+									resolve({
+										is_success: false,
+										error: {
+											code: reqResult.code,
+											message: reqResult.data
+										}
+									})
+								}
+							} else {
+								resolve({
+									is_success: false,
+									error: {
+										code: WorkerRequestError.UNKNOWN_ERROR,
+										message: response.body
+									}
+								});
+							}
+						}
 					}
-				},
-				(err, response, body) => {
-					if (err){
-						reject(err);
-					} else if (response){
-						resolve(response.body);
-					}
-				}
-			)});
+				)
+			});
 
-			return {
-				is_success: true,
-				data: fileId
-			}
+			return uploadResult
 		} else {
 			return {
 				is_success: false,

@@ -57,29 +57,30 @@ class ApiServer{
 		this.temporaryFilesDir = temporaryFilesDir;
 		this.server = ExpressFramework();
 
+		this.server.use(multer( { dest: this.temporaryFilesDir } ).single("filedata"));
+		this.server.use(BodyParser.json());
+
+
 		this.server.use((req, res, next) => {
 			//INCOMING TRAFFIC SIZE
-			this.statsManager.regRequest(req.path);
-			this.statsManager.regTraffic(req.socket.bytesRead, "incoming");
+			StatsManager.regRequest(req.path);
+			StatsManager.regTraffic(req.socket.bytesRead, "incoming");
 
 			if (req.file){
-				this.statsManager.regTraffic(req.file.size, "incoming");
+				StatsManager.regTraffic(req.file.size, "incoming");
 			}
-
 
 			next();
 		});
 
 		this.server.use((req, res, next) => {
 			//OUTCOMING TRAFFIC SIZE
-			this.statsManager.regRequest(req.path);
-			this.statsManager.regTraffic(req.socket.bytesWritten, "outcoming");
+			StatsManager.regRequest(req.path);
+			StatsManager.regTraffic(req.socket.bytesWritten, "outcoming");
 
 			next();
 		});
-		
-		this.server.use(multer( { dest: this.temporaryFilesDir } ).single("filedata"));
-		this.server.use(BodyParser.json());
+
 
 		this.server.get(`/`, async (req, res) =>{
 			res.statusCode = 200; res.end();
@@ -169,7 +170,14 @@ class ApiServer{
 		})
 
 		this.server.get('/distribution/loadDirs', async (req, res) => {
-			this.distributor.loadDirs(undefined, true);
+			if (req.query["checkDistributed"] == "1"){
+				this.distributor.loadDirs(() => {
+					this.distributor.checkDistribution();
+				}, true);
+			} else {
+				this.distributor.loadDirs(undefined, true);
+			}
+		
 			res.statusCode = 200; res.end();
 		})
 
